@@ -1,3 +1,10 @@
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+# os.environ["HF_TOKEN"] = os.getenv("HUGGING_FACE_TOKEN")
+
 from model.model import text_excraction
 
 
