@@ -1,12 +1,8 @@
 import torch
-from peft import PeftModel
 from qwen_vl_utils import process_vision_info
 from torchvision import io
 from torchvision.transforms.functional import to_pil_image
-from transformers import (
-    AutoModelForImageTextToText,
-    AutoProcessor,
-)
+from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 
 
 class text_excraction():
@@ -22,8 +18,8 @@ class text_excraction():
         self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_built() else "cpu"
 
     def setup(self):
-        model = AutoModelForImageTextToText.from_pretrained(
-            "oddadmix/Qaari-0.1-Urdu-OCR-VL-2B-Instruct",
+        model = Qwen2VLForConditionalGeneration.from_pretrained(
+            self.model_id,
             torch_dtype="auto",
             device_map="auto"
         )
