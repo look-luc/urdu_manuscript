@@ -1,5 +1,6 @@
 import torch
 from torchvision import io
+from torchvision.transforms.functional import to_pil_image
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
 
 
@@ -25,7 +26,8 @@ class text_excraction():
 
     def extract(self, image_path:str):
         self.image_path = image_path
-        image_tensor = io.read_image(self.image_path)
+        pytorch_image_read = io.read_image(self.image_path)
+        image_tensor = to_pil_image(pytorch_image_read).convert("RGB")
 
         self.model, self.processor = self.setup()
 
@@ -42,3 +44,10 @@ class text_excraction():
         self.text = self.processor.apply_chat_template(self.message, tokenize=False, add_generation_prompt=True)
 
         self.inputs = self.processor(text=[self.text], images=image_tensor, padding=True, return_tensors="pt").to(self.device)
+
+        generated_ids = self.model.generate(**self.inputs, max_new_tokens=1024)
+        gen_id_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(self.inputs.input_ids, generated_ids)]
+
+        output_text = self.processor.batch_decode(gen_id_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+
+        return output_text[0]
