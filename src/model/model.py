@@ -1,4 +1,6 @@
 import torch
+from peft import PeftModel
+from qwen_vl_utils import process_vision_info
 from torchvision import io
 from torchvision.transforms.functional import to_pil_image
 from transformers import AutoProcessor, Qwen2VLForConditionalGeneration
@@ -17,9 +19,15 @@ class text_excraction():
         self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_built() else "cpu"
 
     def setup(self):
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
-            self.model_id, torch_dtype=torch.float16, device_map="auto"
+        base_model_id = "Qwen/Qwen2-VL-2B-Instruct"
+        base_model = Qwen2VLForConditionalGeneration.from_pretrained(
+            base_model_id,
+            torch_dtype="auto",
+            device_map="auto"
         )
+
+        model = PeftModel.from_pretrained(base_model, self.model_id)
+
         processor = AutoProcessor.from_pretrained(self.model_id)
 
         return model, processor
@@ -30,6 +38,7 @@ class text_excraction():
         image_tensor = to_pil_image(pytorch_image_read).convert("RGB")
 
         self.model, self.processor = self.setup()
+        max_tokens = 2000
 
         self.message = [
             {
@@ -43,9 +52,17 @@ class text_excraction():
 
         self.text = self.processor.apply_chat_template(self.message, tokenize=False, add_generation_prompt=True)
 
-        self.inputs = self.processor(text=[self.text], images=image_tensor, padding=True, return_tensors="pt").to(self.device)
+        image_inputs, video_inputs = process_vision_info(self.message)
 
-        generated_ids = self.model.generate(**self.inputs, max_new_tokens=1024)
+        self.inputs = self.processor(
+            text=[self.text],
+            images=image_inputs,
+            videos=None,
+            padding=True,
+            return_tensors="pt"
+        ).to(self.device)
+
+        generated_ids = self.model.generate(**self.inputs, max_new_tokens=max_tokens)
         gen_id_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(self.inputs.input_ids, generated_ids)]
 
         output_text = self.processor.batch_decode(gen_id_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
