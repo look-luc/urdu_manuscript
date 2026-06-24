@@ -14,12 +14,12 @@ class text_extraction:
         self,
         model_id: str = "oddadmix/Qaari-0.1-Urdu-OCR-VL-2B-Instruct",
         prompt: str = """You are a precise manuscript transcription assistant.
-        Transcribe the historical Urdu Nastaliq script exactly as it appears in the image.
+            Transcribe the historical Urdu Nastaliq script exactly as it appears in the image.
 
-        CRITICAL RULES:
-        1. Maintain line-by-line formatting matching the manuscript.
-        2. Transcribe all written vowel markings/diacritics (اعراب) exactly where they appear in the text. Do not invent markings that are not visually present.
-        3. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور').""",
+            CRITICAL RULES:
+            1. Maintain line-by-line formatting matching the manuscript.
+            2. Transcribe all written vowel markings/diacritics (اعراب) exactly where they appear in the text. Do not invent markings that are not visually present.
+            3. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور').""",
     ) -> None:
         torch.backends.cudnn.enabled = False
 
@@ -40,7 +40,7 @@ class text_extraction:
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
 
-    def extract(self, image_path: str):
+    def extract(self, image_path: str, decoding_strategy: str = "greedy"):
         pytorch_image_read = io.read_image(image_path)
         image_tensor = to_pil_image(pytorch_image_read).convert("RGB")
 
@@ -72,14 +72,23 @@ class text_extraction:
             return_tensors="pt"
         ).to(self.device)
 
+        if decoding_strategy == "beam_search":
+            gen_config = {
+                "do_sample": False,
+                "num_beams": 3,
+                "repetition_penalty": 1.2,
+            }
+        else:
+            gen_config = {
+                "do_sample": False,
+                "repetition_penalty": 1.1,
+            }
+
         with torch.no_grad():
             generated_ids = self.model.generate(
                 **inputs,
                 max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=0.1,
-                repetition_penalty=1.1,
-                top_p=0.9
+                **gen_config
             )
 
         gen_id_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]

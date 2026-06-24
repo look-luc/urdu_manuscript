@@ -12,8 +12,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_PATH = SCRIPT_DIR.parent / "data"
 
 def main():
-    right_side_model = text_extraction().extract(str(DATA_PATH/"page_10_original_manuscript_old_urdu.jpeg"))
-    left_side_model = text_extraction().extract(str(DATA_PATH/"page_11_original_manuscript_old_urdu.jpeg"))
+    right_side_model = text_extraction().extract(str(DATA_PATH/"page_10_original_manuscript_old_urdu.jpeg"), "beam_search")
+    left_side_model = text_extraction().extract(str(DATA_PATH/"page_11_original_manuscript_old_urdu.jpeg"), "beam_search")
 
     with open("model_out.txt", "w", encoding="utf-8") as file:
         file.write("Page 10 (right page)\n")
