@@ -1,29 +1,25 @@
-import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
+from model.model import text_extraction
+
 load_dotenv()
 # os.environ["HF_TOKEN"] = os.getenv("HUGGING_FACE_TOKEN")
-
-from pathlib import Path
-
-import torch
-
-from model.model import text_extraction
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 DATA_PATH = SCRIPT_DIR.parent / "data"
 
 def main():
-    image_path = "../data/Original_manuscript_old_urdu.jpeg"
-    print(f"Checking for file at: {os.path.abspath(image_path)}")
-    print(f"Does file exist? {os.path.exists(image_path)}")
-
-    model = text_extraction().extract(str(DATA_PATH/"Original_manuscript_old_urdu.jpeg"))
+    right_side_model = text_extraction().extract(str(DATA_PATH/"page_10_original_manuscript_old_urdu.jpeg"))
+    left_side_model = text_extraction().extract(str(DATA_PATH/"page_11_original_manuscript_old_urdu.jpeg"))
 
     with open("model_out.txt", "w", encoding="utf-8") as file:
-        file.write(model)
+        file.write("Page 10 (right page)")
+        file.write(right_side_model)
+        file.write("\n\nPage 11 (left page)")
+        file.write(left_side_model)
     return 0
 
 if __name__ == "__main__":

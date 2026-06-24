@@ -15,7 +15,7 @@ export HF_HOME="/projects/$USER/.cache/huggingface"
 mkdir -p "$HF_HOME"
 
 module purge
-module load cuda/12.x
+module load cuda/12.1.1
 module load anaconda
 set +u && conda activate urdu_manuscript_stable && set -u
 

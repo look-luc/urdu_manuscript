@@ -4,6 +4,7 @@ from torchvision import io
 from torchvision.transforms.functional import to_pil_image
 from transformers import (
     AutoProcessor,
+    BitsAndBytesConfig,
     Qwen2VLForConditionalGeneration,
 )
 
@@ -23,11 +24,20 @@ class text_extraction:
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True
+        )
+
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            torch_dtype=torch.float16,
-            trust_remote_code=True
-        ).to(self.device)
+            torch_dtype="auto",
+            device_map={"": 0},
+            trust_remote_code=True,
+            quantization_config=bnb_config,
+        )
 
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
@@ -64,9 +74,8 @@ class text_extraction:
                 **inputs,
                 max_new_tokens=max_tokens,
                 do_sample=True,
-                temperature=0.4,
-                repetition_penalty=1.5,
-                no_repeat_ngram_size=3,
+                temperature=0.1,         # Keeps token selection tight and near-greedy
+                repetition_penalty=1.1,  # Just enough penalty to nudge it out of the "اسے" loop
                 top_p=0.9
             )
 
@@ -74,4 +83,4 @@ class text_extraction:
         output_text = self.processor.batch_decode(gen_id_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
 
         final_text = output_text[0].split("[END]")[0]
-        return final
+        return final_text
