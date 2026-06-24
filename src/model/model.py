@@ -87,7 +87,8 @@ class text_extraction:
         else:
             gen_config = {
                 "do_sample": False,
-                "repetition_penalty": 1.0,
+                "repetition_penalty": 1.3,       # Strongly discourages token looping
+                "no_repeat_ngram_size": 3,
             }
 
         with torch.no_grad():
