@@ -21,6 +21,13 @@ class text_extraction:
                 3. Do NOT wrap the output in markdown code blocks (```).
                 4. Maintain line-by-line formatting matching the manuscript layout.
 
+                HISTORICAL TERMINOLOGY ANCHORS (Use these to resolve ambiguous ink strokes/artifacts):
+                    - Title / Preface header: "دیباچہ" (Dibacha)
+                    - Key manuscript reference: "معراج العاشقین" (Meraj-ul-Ashiqeen)
+                    - Signature name at the bottom of Page 10: "عبدالحق" (Abdul Haq)
+                    - Religious honorific/phrase on Page 11: "علیہ السلام" (Alayhi s-salam)
+                    - Common Dakhni vocabulary/spelling features: 'کوں', 'ہور', 'سون', 'دیکھیا', 'طبیب', 'نفس'
+
                 TRANSCRIPTION RULES:
                 1. Extract all written vowel markings/diacritics (اعراب) exactly where they are visually drawn. Do not invent missing vowels.
                 2. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
@@ -86,10 +93,10 @@ class text_extraction:
             }
         else:
             gen_config = {
-                "do_sample": False,
-                "repetition_penalty": 1.3,       # Strongly discourages token looping
-                "no_repeat_ngram_size": 3,
-            }
+                    "do_sample": False,
+                    "repetition_penalty": 1.15,       # Slightly above 1.1 to ward off the "ہور" loop
+                    "no_repeat_ngram_size": 6,        # Raised to 6 so common words/letters can repeat naturally
+                }
 
         with torch.no_grad():
             generated_ids = self.model.generate(
