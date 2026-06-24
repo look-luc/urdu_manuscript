@@ -12,26 +12,20 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2-VL-7B-Instruct",
-        prompt: str = """You are a automated OCR engine operating under strict structural constraints.
-                Extract the historical Urdu Nastaliq script exactly as it appears in the image.
+        prompt: str = """You are an automated OCR engine operating under strict structural constraints.
+                Extract the historical Urdu Nastaliq text exactly as it is written in the image.
 
                 CRITICAL OUTPUT FORMATTING RULES:
                 1. Output ONLY the raw extracted text wrapped inside <text> and </text> tags.
-                2. Do NOT write any introductory or concluding remarks (e.g., do NOT write "Sure, here is the transcription").
+                2. Do NOT write any introductory or concluding remarks.
                 3. Do NOT wrap the output in markdown code blocks (```).
-                4. Maintain line-by-line formatting matching the manuscript layout.
+                4. Maintain exact line-by-line formatting matching the rows of the manuscript.
 
-                HISTORICAL TERMINOLOGY ANCHORS (Use these to resolve ambiguous ink strokes/artifacts):
-                    - Title / Preface header: "دیباچہ" (Dibacha)
-                    - Key manuscript reference: "معراج العاشقین" (Meraj-ul-Ashiqeen)
-                    - Signature name at the bottom of Page 10: "عبدالحق" (Abdul Haq)
-                    - Religious honorific/phrase on Page 11: "علیہ السلام" (Alayhi s-salam)
-                    - Common Dakhni vocabulary/spelling features: 'کوں', 'ہور', 'سون', 'دیکھیا', 'طبیب', 'نفس'
-
-                TRANSCRIPTION RULES:
-                1. Extract all written vowel markings/diacritics (اعراب) exactly where they are visually drawn. Do not invent missing vowels.
-                2. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
-                3. If a page contains a header or a page number, extract it on its own line at the top.""",
+                VISUAL RENDERING RULES:
+                1. Extract the literal Urdu letters you see. Do NOT attempt to convert the text into classical Arabic or add full Quranic vowel diacritics.
+                2. Only Extract vowel markings (اعراب) if they are explicitly, darkly drawn on the page.
+                3. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور', 'سون') exactly as written.
+                4. If a line ends or a new visual row begins, immediately insert a newline formatting break.""",
     ) -> None:
         torch.backends.cudnn.enabled = False
 
