@@ -11,6 +11,7 @@
 #SBATCH --qos=blanca-clearlab2
 #SBATCH --mail-type=END,FAIL
 
+rm -rf /projects/$USER/.cache/huggingface/hub/*
 export HF_HOME="/projects/$USER/.cache/huggingface"
 mkdir -p $HF_HOME
 
@@ -21,4 +22,4 @@ cd "$REPO_ROOT"
 
 cd "$REPO_ROOT/urdu_manuscript/src"
 
-/projects/$USER/software/anaconda/envs/urdu_manuscript/bin/python main.py
+/projects/$USER/software/anaconda/envs/urdu_manuscript_stable/bin/python main.py
