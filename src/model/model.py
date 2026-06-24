@@ -16,18 +16,18 @@ class text_extraction:
     ) -> None:
         self.model_id = model_id
         self.prompt = prompt
-        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_built() else "cpu"
+        self.device = "cpu"
 
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        device = torch.device(self.device)
+        model_device = torch.device(self.device)
 
         model = Qwen2VLForConditionalGeneration.from_pretrained(
-                self.model_id,
-                torch_dtype=torch.bfloat16, # Recommended for Qwen2-VL
-                trust_remote_code=True
-            ).to(device)
+            self.model_id,
+            torch_dtype=torch.float16, # Change from bfloat16 to float16
+            trust_remote_code=True
+        ).to(model_device)
 
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
