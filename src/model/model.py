@@ -13,7 +13,13 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "oddadmix/Qaari-0.1-Urdu-OCR-VL-2B-Instruct",
-        prompt: str = """Extract and transcribe the Urdu Nastaliq text from this image exactly as written. Provide only the raw text.""",
+        prompt: str = """You are a precise manuscript transcription assistant.
+        Transcribe the historical Urdu Nastaliq script exactly as it appears in the image.
+
+        CRITICAL RULES:
+        1. Maintain line-by-line formatting matching the manuscript.
+        2. Transcribe all written vowel markings/diacritics (اعراب) exactly where they appear in the text. Do not invent markings that are not visually present.
+        3. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور').""",
     ) -> None:
         torch.backends.cudnn.enabled = False
 
