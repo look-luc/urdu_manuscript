@@ -23,9 +23,8 @@ class text_extraction:
             4. Maintain line-by-line formatting matching the manuscript layout.
 
             TRANSCRIPTION RULES:
-            1. Extract all written vowel markings/diacritics (اعراب) exactly where they are visually drawn. Do not invent missing vowels.
-            2. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
-            3. If a page contains a header or a page number, extract it on its own line at the top.
+            1. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
+            2. If a page contains a header or a page number, extract it on its own line at the top.
             """,
     ) -> None:
         torch.backends.cudnn.enabled = False
@@ -83,15 +82,14 @@ class text_extraction:
             gen_config = {
                 "do_sample": False,
                 "num_beams": 3,
-                "repetition_penalty": 1.25,
-                "no_repeat_ngram_size": 4,
+                "repetition_penalty": 1.0,
+                "no_repeat_ngram_size": 0,
             }
         else:
-            # Balanced Greedy Configuration
             gen_config = {
                 "do_sample": False,
-                "repetition_penalty": 1.15,
-                "no_repeat_ngram_size": 6,
+                "repetition_penalty": 1.0,
+                "no_repeat_ngram_size": 0,
             }
 
         with torch.no_grad():
