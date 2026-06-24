@@ -19,6 +19,6 @@ module load cuda/12.1.1
 module load anaconda
 set +u && conda activate urdu_manuscript_stable && set -u
 
-cd /projects/$USER/urdu_manuscript/src
+cd /projects/$USER/urdu_manuscript
 
-python -u main.py
+python -u run.py -o "text_extraction"
