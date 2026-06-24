@@ -12,20 +12,21 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2-VL-7B-Instruct",
-        prompt: str = """You are an automated OCR engine operating under strict structural constraints.
-                Extract the historical Urdu Nastaliq text exactly as it is written in the image.
+        prompt: str = """
+            You are a literal, character-by-character OCR extraction tool.
+            Your sole task is to extract the visible text characters from the provided image.
 
-                CRITICAL OUTPUT FORMATTING RULES:
-                1. Output ONLY the raw extracted text wrapped inside <text> and </text> tags.
-                2. Do NOT write any introductory or concluding remarks.
-                3. Do NOT wrap the output in markdown code blocks (```).
-                4. Maintain exact line-by-line formatting matching the rows of the manuscript.
+            RULES:
+            1. Output ONLY the raw extracted text wrapped inside <text> and </text> tags.
+            2. extract exactly what is written, line-by-line.
+            3. Stop generating immediately when you reach the blank margins or the end of the written page text.
 
-                VISUAL RENDERING RULES:
-                1. Extract the literal Urdu letters you see. Do NOT attempt to convert the text into classical Arabic or add full Quranic vowel diacritics.
-                2. Only Extract vowel markings (اعراب) if they are explicitly, darkly drawn on the page.
-                3. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور', 'سون') exactly as written.
-                4. If a line ends or a new visual row begins, immediately insert a newline formatting break.""",
+            DIACRITIC & LIGATURE PRECISION RULES:
+            1. Nastaliq script stacks words vertically. Separate vertically stacked character clusters into their distinct, individual words horizontally rather than merging them into single invented words.
+            2. Pay strict attention to the placement and count of dots (nuktas). Do not substitute common modern names or words if the literal dot patterns match older historical terms.
+            3. The block of text in the middle of Page 11 contains a Persian poetic couplet; extract the literal letters of these poetic rows exactly as penned without forcing standard Urdu grammar patterns.
+            4. The symbol at the beginning of the bottom lines is the archaic abbreviation for 'نسخہ' (Nuskhah) — extract it accurately.
+            """,
     ) -> None:
         torch.backends.cudnn.enabled = False
 
