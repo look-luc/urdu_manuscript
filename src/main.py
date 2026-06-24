@@ -16,9 +16,9 @@ def main():
     left_side_model = text_extraction().extract(str(DATA_PATH/"page_11_original_manuscript_old_urdu.jpeg"))
 
     with open("model_out.txt", "w", encoding="utf-8") as file:
-        file.write("Page 10 (right page)")
+        file.write("Page 10 (right page)\n")
         file.write(right_side_model)
-        file.write("\n\nPage 11 (left page)")
+        file.write("\n\nPage 11 (left page)\n")
         file.write(left_side_model)
     return 0
 
