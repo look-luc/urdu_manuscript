@@ -13,7 +13,7 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "oddadmix/Qaari-0.1-Urdu-OCR-VL-2B-Instruct",
-        prompt: str = """You are a scholar trying to digitize this manuscript. Put indicators where each page starts and ends to know for later transliteration. Extract the Urdu text in the image. Ignore background noise, page stains, and bleed-through. If you reach the end of the text or cannot recognize a character, output [END]. Output the raw text directly. Do not output bounding box coordinates, spatial locations, or detection data. Provide only the extracted text characters.""",
+        prompt: str = """Extract and transcribe the Urdu Nastaliq text from this image exactly as written. Provide only the raw text.""",
     ) -> None:
         torch.backends.cudnn.enabled = False
 
@@ -24,21 +24,13 @@ class text_extraction:
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True
-        )
-
+        # Remove bnb_config entirely
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            torch_dtype="auto",
+            torch_dtype=torch.bfloat16,  # Force uncompressed bfloat16 precision
             device_map={"": 0},
             trust_remote_code=True,
-            quantization_config=bnb_config,
         )
-
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
 
@@ -52,7 +44,12 @@ class text_extraction:
             {
                 "role": "user",
                 "content": [
-                    {"type": "image", "image": image_tensor},
+                    {
+                        "type": "image",
+                        "image": image_tensor,
+                        "min_pixels": 256 * 256,
+                        "max_pixels": 14 * 14 * 1024 * 1024
+                    },
                     {"type": "text", "text": self.prompt}
                 ]
             }
@@ -74,8 +71,8 @@ class text_extraction:
                 **inputs,
                 max_new_tokens=max_tokens,
                 do_sample=True,
-                temperature=0.1,         # Keeps token selection tight and near-greedy
-                repetition_penalty=1.1,  # Just enough penalty to nudge it out of the "اسے" loop
+                temperature=0.1,
+                repetition_penalty=1.1,
                 top_p=0.9
             )
 
