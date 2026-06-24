@@ -13,19 +13,19 @@ class text_extraction:
         self,
         model_id: str = "Qwen/Qwen2-VL-7B-Instruct",
         prompt: str = """
-            You are a literal, character-by-character OCR extraction tool.
-            Your sole task is to extract the visible text characters from the provided image.
+            You are a automated OCR engine operating under strict structural constraints.
+            Extract the historical Urdu Nastaliq script exactly as it appears in the image.
 
-            RULES:
+            CRITICAL OUTPUT FORMATTING RULES:
             1. Output ONLY the raw extracted text wrapped inside <text> and </text> tags.
-            2. extract exactly what is written, line-by-line.
-            3. Stop generating immediately when you reach the blank margins or the end of the written page text.
+            2. Do NOT write any introductory or concluding remarks (e.g., do NOT write "Sure, here is the transcription").
+            3. Do NOT wrap the output in markdown code blocks (```).
+            4. Maintain line-by-line formatting matching the manuscript layout.
 
-            DIACRITIC & LIGATURE PRECISION RULES:
-            1. Nastaliq script stacks words vertically. Separate vertically stacked character clusters into their distinct, individual words horizontally rather than merging them into single invented words.
-            2. Pay strict attention to the placement and count of dots (nuktas). Do not substitute common modern names or words if the literal dot patterns match older historical terms.
-            3. The block of text in the middle of Page 11 contains a Persian poetic couplet; extract the literal letters of these poetic rows exactly as penned without forcing standard Urdu grammar patterns.
-            4. The symbol at the beginning of the bottom lines is the archaic abbreviation for 'نسخہ' (Nuskhah) — extract it accurately.
+            TRANSCRIPTION RULES:
+            1. Extract all written vowel markings/diacritics (اعراب) exactly where they are visually drawn. Do not invent missing vowels.
+            2. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
+            3. If a page contains a header or a page number, extract it on its own line at the top.
             """,
     ) -> None:
         torch.backends.cudnn.enabled = False
@@ -87,11 +87,12 @@ class text_extraction:
                 "no_repeat_ngram_size": 4,
             }
         else:
+            # Balanced Greedy Configuration
             gen_config = {
-                    "do_sample": False,
-                    "repetition_penalty": 1.15,       # Slightly above 1.1 to ward off the "ہور" loop
-                    "no_repeat_ngram_size": 6,        # Raised to 6 so common words/letters can repeat naturally
-                }
+                "do_sample": False,
+                "repetition_penalty": 1.15,
+                "no_repeat_ngram_size": 6,
+            }
 
         with torch.no_grad():
             generated_ids = self.model.generate(
