@@ -12,22 +12,22 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2-VL-2B-Instruct",
-        prompt: str = """Extract all the Urdu text from this manuscript image accurately line by line. Do not revise any suffix or prefix, keep the text original as it is in the manuscript""",
+        prompt: str = """You are a scholar trying to digitize this manuscript. Extract the Urdu text in the image. Ignore background noise, page stains, and bleed-through. Output the raw text directly. Do not output bounding box coordinates, spatial locations, or detection data. Provide only the extracted text characters.""",
     ) -> None:
+        torch.backends.cudnn.enabled = False
+
         self.model_id = model_id
         self.prompt = prompt
-        self.device = "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        model_device = torch.device(self.device)
-
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            torch_dtype=torch.float16, # Change from bfloat16 to float16
+            torch_dtype=torch.float16,
             trust_remote_code=True
-        ).to(model_device)
+        ).to(self.device)
 
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
@@ -60,7 +60,14 @@ class text_extraction:
         ).to(self.device)
 
         with torch.no_grad():
-            generated_ids = self.model.generate(**inputs, max_new_tokens=max_tokens)
+            generated_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=max_tokens,
+                do_sample=True,
+                temperature=0.2,
+                repetition_penalty=1.2,
+                top_p=0.9
+            )
 
         gen_id_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
         output_text = self.processor.batch_decode(gen_id_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)

@@ -11,15 +11,14 @@
 #SBATCH --qos=blanca-clearlab2
 #SBATCH --mail-type=END,FAIL
 
-rm -rf /projects/$USER/.cache/huggingface/hub/*
 export HF_HOME="/projects/$USER/.cache/huggingface"
-mkdir -p $HF_HOME
+mkdir -p "$HF_HOME"
 
-set -uo pipefail
+module purge
+module load cuda/12.x
+module load anaconda
+set +u && conda activate urdu_manuscript_stable && set -u
 
-REPO_ROOT="/projects/$USER"
-cd "$REPO_ROOT"
+cd /projects/$USER/urdu_manuscript/src
 
-cd "$REPO_ROOT/urdu_manuscript/src"
-
-/projects/$USER/software/anaconda/envs/urdu_manuscript_stable/bin/python main.py
+python -u main.py
