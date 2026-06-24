@@ -11,9 +11,8 @@ class text_extraction:
     ) -> None:
         torch.backends.cudnn.enabled = False
 
-        self.model_id = str(model_id)
-        self.prompt = prompt
-        self.device = str("cuda") if torch.cuda.is_available() else "cpu"
+        self.model_id = model_id
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.model, self.processor = self._setup_model()
 
@@ -27,10 +26,10 @@ class text_extraction:
         pytorch_image_read = io.read_image(image_path)
         image_tensor = to_pil_image(pytorch_image_read).convert("RGB")
 
-        pixel_values = self.processor(images=image, return_tensors="pt").pixel_values.to(self.device)
+        pixel_values = self.processor(images=image_tensor, return_tensors="pt").pixel_values.to(self.device)
 
         with torch.no_grad():
             generated_ids = self.model.generate(pixel_values)
 
         output_text = self.processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-        return final_text
+        return output_text
