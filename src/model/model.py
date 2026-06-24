@@ -4,7 +4,6 @@ from torchvision import io
 from torchvision.transforms.functional import to_pil_image
 from transformers import (
     AutoProcessor,
-    BitsAndBytesConfig,
     Qwen2VLForConditionalGeneration,
 )
 
@@ -13,13 +12,19 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2-VL-7B-Instruct",
-        prompt: str = """You are a precise manuscript transcription assistant.
-            Transcribe the historical Urdu Nastaliq script exactly as it appears in the image.
+        prompt: str = """You are a automated OCR engine operating under strict structural constraints.
+                Extract the historical Urdu Nastaliq script exactly as it appears in the image.
 
-            CRITICAL RULES:
-            1. Maintain line-by-line formatting matching the manuscript.
-            2. Transcribe all written vowel markings/diacritics (اعراب) exactly where they appear in the text. Do not invent markings that are not visually present.
-            3. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور').""",
+                CRITICAL OUTPUT FORMATTING RULES:
+                1. Output ONLY the raw extracted text wrapped inside <text> and </text> tags.
+                2. Do NOT write any introductory or concluding remarks (e.g., do NOT write "Sure, here is the transcription").
+                3. Do NOT wrap the output in markdown code blocks (```).
+                4. Maintain line-by-line formatting matching the manuscript layout.
+
+                TRANSCRIPTION RULES:
+                1. Extract all written vowel markings/diacritics (اعراب) exactly where they are visually drawn. Do not invent missing vowels.
+                2. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
+                3. If a page contains a header or a page number, extract it on its own line at the top.""",
     ) -> None:
         torch.backends.cudnn.enabled = False
 
@@ -53,7 +58,7 @@ class text_extraction:
                     {
                         "type": "image",
                         "image": image_tensor,
-                        "min_pixels": 256 * 256,
+                        "min_pixels": 512 * 512,
                         "max_pixels": 14 * 14 * 1024 * 1024
                     },
                     {"type": "text", "text": self.prompt}
