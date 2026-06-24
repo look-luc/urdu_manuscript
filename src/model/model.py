@@ -4,7 +4,6 @@ from torchvision import io
 from torchvision.transforms.functional import to_pil_image
 from transformers import (
     AutoProcessor,
-    BitsAndBytesConfig,
     Qwen2VLForConditionalGeneration,
 )
 
@@ -12,7 +11,7 @@ from transformers import (
 class text_extraction:
     def __init__(
         self,
-        model_id: str = "oddadmix/Qaari-0.1-Urdu-OCR-VL-2B-Instruct",
+        model_id: str = "Qwen/Qwen2-VL-2B-Instruct",
         prompt: str = """Extract all the Urdu text from this manuscript image accurately line by line. Do not revise any suffix or prefix, keep the text original as it is in the manuscript""",
     ) -> None:
         self.model_id = model_id
@@ -22,19 +21,14 @@ class text_extraction:
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        quant_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True
-        )
+        device = torch.device(self.device)
 
         model = Qwen2VLForConditionalGeneration.from_pretrained(
-            self.model_id,
-            quantization_config=quant_config, # Apply the config here
-            device_map="auto",
-            trust_remote_code=True
-        )
+                self.model_id,
+                torch_dtype=torch.bfloat16, # Recommended for Qwen2-VL
+                trust_remote_code=True
+            ).to(device)
+
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
 
