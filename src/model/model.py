@@ -12,7 +12,7 @@ from transformers import (
 class text_extraction:
     def __init__(
         self,
-        model_id: str = "oddadmix/Qaari-0.1-Urdu-OCR-VL-2B-Instruct",
+        model_id: str = "Qwen/Qwen2-VL-7B-Instruct",
         prompt: str = """You are a precise manuscript transcription assistant.
             Transcribe the historical Urdu Nastaliq script exactly as it appears in the image.
 
@@ -33,8 +33,8 @@ class text_extraction:
         # Remove bnb_config entirely
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            torch_dtype=torch.bfloat16,  # Force uncompressed bfloat16 precision
-            device_map={"": 0},
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
             trust_remote_code=True,
         )
         processor = AutoProcessor.from_pretrained(self.model_id)
@@ -76,7 +76,8 @@ class text_extraction:
             gen_config = {
                 "do_sample": False,
                 "num_beams": 3,
-                "repetition_penalty": 1.2,
+                "repetition_penalty": 1.25,
+                "no_repeat_ngram_size": 4,
             }
         else:
             gen_config = {
