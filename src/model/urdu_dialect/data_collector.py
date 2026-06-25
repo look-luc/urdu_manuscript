@@ -13,25 +13,32 @@ class Data_Collector:
         pixel_values = [feature["pixel_values"] for feature in features]
         image_grid_thw = [feature["image_grid_thw"] for feature in features]
 
-        # 3. Dynamic Padding
-        # Pad your text tensors so they are all uniform length across this batch
+        # Dynamic Padding
+        # Pad the text tensors so they are all uniform length across this batch
         padded_inputs = self.processor.tokenizer.pad(
-            {"input_ids": input_ids_list, "attention_mask": attention_mask_list},
+            {
+                "input_ids": input_ids_list,
+                "attention_mask": attention_mask_list
+            },
             padding=True,
             return_tensors="pt"
         )
 
-        input_ids = padded_inputs["input_ids"]
-        attention_mask = padded_inputs["attention_mask"]
+        input_ids = padded_inputs["input_ids"] # the ids for the inputs after being padded
+        attention_mask = padded_inputs["attention_mask"] # attention masks after being padded
 
-        # 4. Label Masking Logic
         # Create a copy of input_ids to act as your target labels
         labels = input_ids.clone()
 
+        # going row by row
         for i in range(len(features)):
-            # Hint 3: Locate where the assistant's real response starts in this sequence
-            # Turn everything BEFORE that point into -100 so the model doesn't compute loss on it
-            ...
+            row_labels = labels[i]
+
+            for row in range(len(row_labels)-len(self.assistant_start_token)+1):
+                # determining if window of size current row to the current row + how ever long the assistant start token is
+                if row_labels[row:row+len(self.assistant_start_token)].tolist() == self.assistant_start_token:
+                    labels[i, :row+len(self.assistant_start_token)] = -100 #will assign the range to the value specified; labels is a torch tensor not a list
+                    break
 
         # 5. Collate everything into a dictionary matching the model forward pass signatures
         batch = {
