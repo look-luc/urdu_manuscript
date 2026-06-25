@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import torch
+from data_collector import Data_Collector
 from transformers import (
     AutoProcessor,
     Qwen2VLForConditionalGeneration,
@@ -74,7 +75,12 @@ class unification_urdu_lang_model:
             }
         ]
 
-        text_prompt = self.processor.apply_chat_template(message, tokenize=False, add_generation_prompt=False)
+        text_prompt = self.processor.apply_chat_template(
+            message,
+            tokenize=False,
+            return_assistant_tokens_mask=True,
+            add_generation_prompt=False
+        )
 
         inputs = self.processor(
             text=[text_prompt],
@@ -108,5 +114,3 @@ class unification_urdu_lang_model:
         processed_arabic_test = arabic_data_test.map(self._process, remove_columns=arabic_data_test.column_names)
         processed_urdu_test = urdu_data_test.map(self._process, remove_columns=urdu_data_test.column_names)
         processed_farsi_test = farsi_data_test.map(self._process, remove_columns=farsi_data_test.column_names)
-
-        pass
