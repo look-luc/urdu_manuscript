@@ -13,12 +13,11 @@ from transformers import (
     TrainingArguments,
 )
 
+from data import get_data
+
 root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
-
-from data import get_data
-
 
 class unification_urdu_lang_model:
     def __init__(
