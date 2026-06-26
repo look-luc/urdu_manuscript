@@ -114,13 +114,13 @@ class unification_urdu_lang_model:
             bnb_4bit_compute_dtype=torch.bfloat16,
             bnb_4bit_quant_type="nf4"
         )
-        self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
             torch_dtype=torch.bfloat16,
             quantization_config=quantization_config,
-            attn_implementation="flash_attention_2"
+            attn_implementation="sdpa"
         )
-        processor = AutoProcessor.from_pretrained(self.model_id)
+        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
 
         data = get_data.get_datasets()
 
