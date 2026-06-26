@@ -222,6 +222,7 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
+            ignore_data_skip=True,
             per_device_train_batch_size=1,      # Minimize active batch memory footprint
             gradient_accumulation_steps=4,      # Simulates a batch size of 4 safely
             gradient_checkpointing=True,        # Crucial OOM mitigation flag
