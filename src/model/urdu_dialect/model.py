@@ -1,11 +1,13 @@
 import sys
 from pathlib import Path
 
+import evaluate
 import numpy as np
 import torch
 from data_collector import Data_Collector
 from datasets import concatenate_datasets
 from peft import LoraConfig, get_peft_model
+from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoProcessor,
     Qwen2VLForConditionalGeneration,
@@ -18,6 +20,9 @@ from data import get_data
 root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
+
+cer_metric = evaluate.load("cer")
+wer_metric = evaluate.load("wer")
 
 class unification_urdu_lang_model:
     def __init__(
@@ -88,8 +93,17 @@ class unification_urdu_lang_model:
 
         f1_score = (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
+        targets = [[label] for label in decoded_labels]
+        bleu_score_ocr = bleu_score(decoded_preds, targets, n_gram=4)
+
+        cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
+        wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
+
         return {
-            "f1": f1_score
+            "F1": f1_score,
+            "BLEU score": bleu_score_ocr,
+            "CER score": cer_score,
+            "WER score": wer_score
         }
 
     def _setup (self):
