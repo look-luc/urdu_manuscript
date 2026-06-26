@@ -36,7 +36,6 @@ class text_extraction:
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        # Remove bnb_config entirely
         model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_id,
             torch_dtype=torch.bfloat16,
