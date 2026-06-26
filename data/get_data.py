@@ -17,6 +17,7 @@ def force_image_schema(ds: Dataset) -> Dataset:
     return ds.cast_column("image", Image())
 
 def get_datasets():
+
     # --- Arabic ---
     ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset")["train"]
     ds_arabic = force_image_schema(ds_arabic)

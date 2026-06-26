@@ -11,6 +11,8 @@
 #SBATCH --qos=blanca-clearlab2
 #SBATCH --mail-type=END,FAIL
 
+export HF_TOKEN="${HF_TOKEN}"
+
 export HF_HOME="/projects/$USER/.cache/huggingface"
 export EVALUATE_CACHE_DIR="/projects/$USER/.cache/evaluate"
 export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
@@ -19,14 +21,15 @@ mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
 
 module purge
 module load cuda/12.1.1
-module load anaconda
 
 export LD_LIBRARY_PATH="/curc/sw/cuda/12.1.1/lib64:/curc/sw/cuda/12.1.1/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
 
-set +u && conda activate urdu_manuscript_stable && set -u
-pip install jiwer --quiet
+source /home/$USER/anaconda3/etc/profile.d/conda.sh
+
+conda activate urdu_manuscript_stable
+
 cd /projects/$USER/urdu_manuscript
+pip install jiwer --quiet
 
 MODEL_TYPE=${1:-"text_extraction"}
-
 python -u run.py -o "$MODEL_TYPE"
