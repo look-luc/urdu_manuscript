@@ -1,3 +1,6 @@
+import torch
+
+
 class Data_Collector:
     def __init__(self, processor):
         self.processor = processor
@@ -40,14 +43,13 @@ class Data_Collector:
                     labels[i, :row+len(self.assistant_start_token)] = -100 #will assign the range to the value specified; labels is a torch tensor not a list
                     break
 
-        # 5. Collate everything into a dictionary matching the model forward pass signatures
+        # Collate everything into a dictionary matching the model forward pass signatures
         batch = {
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": labels,
-            # Hint 4: Vision elements must be stacked or concatenated depending on processor shape
-            "pixel_values": ...,
-            "image_grid_thw": ...
+            "pixel_values": torch.cat(pixel_values, dim=0),
+            "image_grid_thw": torch.cat(image_grid_thw, dim=0)
         }
 
         return batch
