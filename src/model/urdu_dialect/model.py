@@ -4,7 +4,6 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-from data_collector import Data_Collector
 from datasets import concatenate_datasets
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
@@ -17,6 +16,8 @@ from transformers import (
 
 from data import get_data
 
+from .data_collector import Data_Collector
+
 root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
@@ -27,7 +28,7 @@ wer_metric = evaluate.load("wer")
 class unification_urdu_lang_model:
     def __init__(
         self,
-        model_id:str="Qwen/Qwen2.5-VL-72B-Instruct",
+        model_id:str="Qwen/Qwen2.5-VL-7B-Instruct",
         prompt:str="""
             You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.
             Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
