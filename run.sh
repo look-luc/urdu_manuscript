@@ -17,6 +17,15 @@ mkdir -p "$HF_HOME"
 module purge
 module load cuda/12.1.1
 module load anaconda
+
+if [ -n "$CUDA_HOME" ]; then
+    export LD_LIBRARY_PATH="$CUDA_HOME/lib64:$CUDA_HOME/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+elif [ -n "$CUDA_PATH" ]; then
+    export LD_LIBRARY_PATH="$CUDA_PATH/lib64:$CUDA_PATH/extras/CUPTI/lib64:$LD_LIBRARY_PATH"
+else
+    echo "WARNING: CUDA_HOME is not set. CUPTI path injection may fail."
+fi
+
 set +u && conda activate urdu_manuscript_stable && set -u
 
 cd /projects/$USER/urdu_manuscript
