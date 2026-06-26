@@ -2,8 +2,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from model.text_extraction.model import text_extraction
-from model.urdu_dialect.model import unification_urdu_lang_model
+from src.model.text_extraction.model import text_extraction
+from src.model.urdu_dialect.model import unification_urdu_lang_model
 
 load_dotenv()
 # os.environ["HF_TOKEN"] = os.getenv("HUGGING_FACE_TOKEN")
