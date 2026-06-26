@@ -95,20 +95,16 @@ def get_datasets():
         ("urdu_test", urdu_ds_test)
     ]
 
-    for name, ds in all_datasets:
-        if ds.features["image"].dtype != "image":
-                print(f"CRITICAL: {name} still has image type: {ds.features['image']}")
-                ds = ds.cast_column("image", Image())
-
-    return {
+    datasets_map = {
         "train": {
-            "arabic": ds_arabic_train,
-            "farsi": persian_ds_train,
-            "urdu": urdu_ds_train
+            "arabic": ds_arabic_train.cast_column("image", Image()),
+            "farsi": persian_ds_train.cast_column("image", Image()),
+            "urdu": urdu_ds_train.cast_column("image", Image())
         },
         "test": {
-            "arabic": ds_arabic_test,
-            "farsi": persian_ds_test,
-            "urdu": urdu_ds_test
+            "arabic": ds_arabic_test.cast_column("image", Image()),
+            "farsi": persian_ds_test.cast_column("image", Image()),
+            "urdu": urdu_ds_test.cast_column("image", Image())
         }
     }
+    return datasets_map

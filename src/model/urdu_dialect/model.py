@@ -160,7 +160,7 @@ class unification_urdu_lang_model:
 
         inputs = self.processor(
             text=[text_prompt],
-            images=[self.image],
+            images=[image],
             padding=False,
             return_tensors='pt'
         )
@@ -183,28 +183,27 @@ class unification_urdu_lang_model:
         urdu_data_test = self.data["test"]["urdu"]
         farsi_data_test = self.data["test"]["farsi"]
 
-        processed_arabic_train = arabic_data_train.map(self._process, remove_columns=arabic_data_train.column_names)
-        processed_urdu_train = urdu_data_train.map(self._process, remove_columns=urdu_data_train.column_names)
-        processed_farsi_train = farsi_data_train.map(self._process, remove_columns=farsi_data_train.column_names)
+        processed_arabic_train = arabic_data_train.map(self._process)
+        processed_urdu_train = urdu_data_train.map(self._process)
+        processed_farsi_train = farsi_data_train.map(self._process)
 
-        processed_arabic_train = processed_arabic_train.remove_columns(["image"])
-        processed_urdu_train = processed_urdu_train.remove_columns(["image"])
-        processed_farsi_train = processed_farsi_train.remove_columns(["image"])
+        columns_to_keep = ["input_ids", "attention_mask", "pixel_values", "image_grid_thw"]
 
-        # Now concatenate
-        train_data = concatenate_datasets([processed_arabic_train, processed_urdu_train, processed_farsi_train])
+        train_data = concatenate_datasets([
+            processed_arabic_train.select_columns(columns_to_keep),
+            processed_urdu_train.select_columns(columns_to_keep),
+            processed_farsi_train.select_columns(columns_to_keep)
+        ])
 
-        processed_arabic_test = arabic_data_test.map(self._process, remove_columns=arabic_data_test.column_names)
-        processed_urdu_test = urdu_data_test.map(self._process, remove_columns=urdu_data_test.column_names)
-        processed_farsi_test = farsi_data_test.map(self._process, remove_columns=farsi_data_test.column_names)
+        processed_arabic_test = arabic_data_test.map(self._process)
+        processed_urdu_test = urdu_data_test.map(self._process)
+        processed_farsi_test = farsi_data_test.map(self._process)
 
-        test_data = concatenate_datasets(
-            [
-                processed_arabic_test,
-                processed_urdu_test,
-                processed_farsi_test
-            ]
-        )
+        train_data = concatenate_datasets([
+            processed_arabic_test.select_columns(columns_to_keep),
+            processed_urdu_test.select_columns(columns_to_keep),
+            processed_farsi_test.select_columns(columns_to_keep)
+        ])
 
         data_collector = Data_Collector(processor=self.processor)
 
