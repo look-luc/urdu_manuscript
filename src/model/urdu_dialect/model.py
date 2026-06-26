@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 from data_collector import Data_Collector
 from datasets import concatenate_datasets
@@ -34,6 +35,61 @@ class unification_urdu_lang_model:
         self.model, self.processor, self.data = self._setup()
 
         self.prompt = prompt
+
+    def _compute_metrics(self, eval_pred):
+        logits, label_ids = eval_pred.predictions
+
+        # Converts raw logits into the most likely Token IDs
+        # logits shape: (batch_size, sequence_length, vocab_size)
+        pred_ids = np.argmax(logits, axis=-1)
+
+        decoded_preds = []
+        decoded_labels = []
+
+        shift_logits = logits[:, :-1, :]
+        shift_labels = label_ids[:, 1:]
+
+        pred_ids = np.argmax(shift_logits, axis=-1)
+        # Clean and decode row by row
+        for i in range(len(label_ids)):
+            # Isolates the text the assistant was supposed to output (ignoring -100)
+            valid_indices = shift_labels[i] != -100
+
+            row_label_ids = shift_labels[i][valid_indices]
+            row_pred_ids = pred_ids[i][valid_indices]
+
+            # Convert token IDs back to human-readable strings using the processor
+            pred_text = self.processor.tokenizer.decode(row_pred_ids, skip_special_tokens=True)
+            label_text = self.processor.tokenizer.decode(row_label_ids, skip_special_tokens=True)
+
+            decoded_preds.append(pred_text)
+            decoded_labels.append(label_text)
+
+        # Metric Comparison Loop
+        tp, fp, fn = 0, 0, 0
+        for pred, target in zip(decoded_preds, decoded_labels):
+            p_arr = np.array(pred.split())
+            t_arr = np.array(target.split())
+
+            unique_tokens = np.union1d(p_arr, t_arr)
+
+            for token in unique_tokens:
+                pred_count = np.sum(p_arr == token)
+                target_count = np.sum(t_arr == token)
+
+                tp += min(pred_count, target_count)
+
+                fp += max(0, pred_count - target_count)
+                fn += max(0, target_count - pred_count)
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+
+        f1_score = (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+
+        return {
+            "f1": f1_score
+        }
 
     def _setup (self):
         model = Qwen2VLForConditionalGeneration.from_pretrained(
@@ -170,6 +226,7 @@ class unification_urdu_lang_model:
             train_dataset=train_data,
             eval_dataset=test_data,
             data_collator=data_collector,
+            compute_metrics=self._compute_metrics,
         )
 
-        trainer.train()
+        return trainer.train()

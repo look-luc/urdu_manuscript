@@ -1,6 +1,6 @@
 import argparse
 
-from model.main import run_model
+from src.main import run_model
 
 
 def run(model_type:str):
@@ -13,5 +13,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print(f"running {args.override}")
-    return run_model(args.override)
+    print(f"running {args.override}\n\n")
+    print(run_model(args.override))
