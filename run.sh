@@ -2,7 +2,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
+#SBATCH --mem=64G
 #SBATCH --time=1:00:00
 #SBATCH --output=/projects/%u/urdu_manuscript/logs/%j.log
 #SBATCH --job-name=urdu_text_extraction
