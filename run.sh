@@ -12,7 +12,10 @@
 #SBATCH --mail-type=END,FAIL
 
 export HF_HOME="/projects/$USER/.cache/huggingface"
-mkdir -p "$HF_HOME"
+export EVALUATE_CACHE_DIR="/projects/$USER/.cache/evaluate"
+export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
+
+mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
 
 module purge
 module load cuda/12.1.1
