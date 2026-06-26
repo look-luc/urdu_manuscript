@@ -9,7 +9,7 @@ from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoProcessor,
-    Qwen2VLForConditionalGeneration,
+    Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainingArguments,
 )
@@ -108,11 +108,10 @@ class unification_urdu_lang_model:
         }
 
     def _setup (self):
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
             torch_dtype=torch.bfloat16,
-            device_map=self.device,
-            trust_remote_code=True,
+            device_map="auto"
         )
         processor = AutoProcessor.from_pretrained(self.model_id)
 
