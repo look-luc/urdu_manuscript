@@ -206,7 +206,7 @@ class unification_urdu_lang_model:
         processed_urdu_test = urdu_data_test.map(self._process)
         processed_farsi_test = farsi_data_test.map(self._process)
 
-        train_data = concatenate_datasets([
+        test_data = concatenate_datasets([
             processed_arabic_test.select_columns(columns_to_keep),
             processed_urdu_test.select_columns(columns_to_keep),
             processed_farsi_test.select_columns(columns_to_keep)
@@ -240,6 +240,9 @@ class unification_urdu_lang_model:
             eval_steps=100,
             save_strategy="steps",
             save_steps=200,
+            dataloader_num_workers=4,
+            dataloader_pin_memory=True,
+            group_by_length=True,
         )
 
         trainer = Trainer(
