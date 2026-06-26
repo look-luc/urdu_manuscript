@@ -19,9 +19,11 @@ def get_datasets():
     parsynth_ds_train = load_dataset("hezarai/parsynth-ocr-200k", split="train")
     parsynth_ds_test = load_dataset("hezarai/parsynth-ocr-200k", split="test")
 
-    for ds in [parsynth_ds_train, parsynth_ds_test]:
-        ds = ds.rename_column("image_path", "image")
-    parsynth_ds_train, parsynth_ds_test = force_image_schema(parsynth_ds_train), force_image_schema(parsynth_ds_test)
+    parsynth_ds_train = parsynth_ds_train.rename_column("image_path", "image")
+    parsynth_ds_test = parsynth_ds_test.rename_column("image_path", "image")
+
+    parsynth_ds_train = force_image_schema(parsynth_ds_train)
+    parsynth_ds_test = force_image_schema(parsynth_ds_test)
 
     # --- Urdu Datasets ---
     nastaliq_ds = load_dataset("oddadmix/qari-0.2.2-nastaliq-dataset-large")
