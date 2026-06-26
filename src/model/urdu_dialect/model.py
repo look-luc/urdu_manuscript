@@ -120,8 +120,9 @@ class unification_urdu_lang_model:
         return  model, processor, data
 
     def _process(self, example):
-        self.image = example["image"]
-        self.text = example["text"]
+        # Use local variables instead of self.image to prevent race conditions
+        image = example["image"]
+        text = example["text"]
 
         message = [
             {
@@ -129,7 +130,7 @@ class unification_urdu_lang_model:
                 "content": [
                     {
                         "type": "image",
-                        "image": self.image,
+                        "image": image,
                         "min_pixels": 512 * 512,
                         "max_pixels": 14 * 14 * 1024 * 1024
                     },
@@ -144,7 +145,7 @@ class unification_urdu_lang_model:
                 "content": [
                     {
                         "type": "text",
-                        "text": self.text
+                        "text": text
                     }
                 ]
             }
@@ -186,13 +187,12 @@ class unification_urdu_lang_model:
         processed_urdu_train = urdu_data_train.map(self._process, remove_columns=urdu_data_train.column_names)
         processed_farsi_train = farsi_data_train.map(self._process, remove_columns=farsi_data_train.column_names)
 
-        train_data = concatenate_datasets(
-            [
-                processed_arabic_train,
-                processed_urdu_train,
-                processed_farsi_train
-            ]
-        )
+        processed_arabic_train = processed_arabic_train.remove_columns(["image"])
+        processed_urdu_train = processed_urdu_train.remove_columns(["image"])
+        processed_farsi_train = processed_farsi_train.remove_columns(["image"])
+
+        # Now concatenate
+        train_data = concatenate_datasets([processed_arabic_train, processed_urdu_train, processed_farsi_train])
 
         processed_arabic_test = arabic_data_test.map(self._process, remove_columns=arabic_data_test.column_names)
         processed_urdu_test = urdu_data_test.map(self._process, remove_columns=urdu_data_test.column_names)

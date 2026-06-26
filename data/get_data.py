@@ -6,8 +6,8 @@ from datasets import Dataset, Image, concatenate_datasets, load_dataset
 def get_datasets():
     # Arabic
     ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset")["train"]
+    ds_arabic = ds_arabic.cast_column("image", Image())
     ds_arabic_split = ds_arabic.train_test_split(test_size=0.2, seed=42)
-    ds_arabic_split = ds_arabic_split.cast_column("image", Image())
     ds_arabic_train = ds_arabic_split["train"]
     ds_arabic_test = ds_arabic_split["test"]
 
@@ -58,6 +58,10 @@ def get_datasets():
     urdu_news_ds_test = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test")
     urdu_news_ds_val = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation")
 
+    nastaliq_ds_train = nastaliq_ds_train.cast_column("image", Image())
+    naskh_ds_train = naskh_ds_train.cast_column("image", Image())
+    urdu_news_ds_train = urdu_news_ds_train.cast_column("image", Image())
+
     combine_urdu_news_ds_test = concatenate_datasets(
         [
             cast(Dataset, urdu_news_ds_test),
@@ -81,6 +85,20 @@ def get_datasets():
         ],
         axis=0
     )
+
+    all_datasets = [
+        ("arabic_train", ds_arabic_train),
+        ("persian_train", persian_ds_train),
+        ("urdu_train", urdu_ds_train),
+        ("arabic_test", ds_arabic_test),
+        ("persian_test", persian_ds_test),
+        ("urdu_test", urdu_ds_test)
+    ]
+
+    for name, ds in all_datasets:
+        if ds.features["image"].dtype != "image":
+                print(f"CRITICAL: {name} still has image type: {ds.features['image']}")
+                ds = ds.cast_column("image", Image())
 
     return {
         "train": {
