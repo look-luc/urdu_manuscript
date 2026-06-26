@@ -115,7 +115,7 @@ class unification_urdu_lang_model:
             bnb_4bit_quant_type="nf4"
         )
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_id,
+            self.model_id,
             torch_dtype=torch.bfloat16,
             quantization_config=quantization_config,
             attn_implementation="flash_attention_2"
