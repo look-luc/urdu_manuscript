@@ -3,108 +3,56 @@ from typing import cast
 from datasets import Dataset, Image, concatenate_datasets, load_dataset
 
 
-def get_datasets():
-    # Arabic
-    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset")["train"]
-    ds_arabic = ds_arabic.cast_column("image", Image())
-    ds_arabic_split = ds_arabic.train_test_split(test_size=0.2, seed=42)
-    ds_arabic_train = ds_arabic_split["train"]
-    ds_arabic_test = ds_arabic_split["test"]
+def force_image_schema(ds: Dataset) -> Dataset:
+    if ds.features["image"].dtype == "image":
+        return ds
+    return ds.cast_column("image", Image())
 
-    # Farsi/Persian
+def get_datasets():
+    # --- Arabic ---
+    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset")["train"]
+    ds_arabic = force_image_schema(ds_arabic)
+    ds_arabic_split = ds_arabic.train_test_split(test_size=0.2, seed=42)
+    ds_arabic_train, ds_arabic_test = ds_arabic_split["train"], ds_arabic_split["test"]
+
+    # --- Farsi/Persian ---
     parsynth_ds_train = load_dataset("hezarai/parsynth-ocr-200k", split="train")
     parsynth_ds_test = load_dataset("hezarai/parsynth-ocr-200k", split="test")
 
-    parsynth_ds_train = parsynth_ds_train.rename_column("image_path", "image")
-    parsynth_ds_train = parsynth_ds_train.cast_column("image", Image())
-    parsynth_ds_test = parsynth_ds_test.rename_column("image_path", "image")
-    parsynth_ds_test = parsynth_ds_test.cast_column("image", Image())
+    for ds in [parsynth_ds_train, parsynth_ds_test]:
+        ds = ds.rename_column("image_path", "image")
+    parsynth_ds_train, parsynth_ds_test = force_image_schema(parsynth_ds_train), force_image_schema(parsynth_ds_test)
 
+    # --- Urdu Datasets ---
+    nastaliq_ds = load_dataset("oddadmix/qari-0.2.2-nastaliq-dataset-large")
+    naskh_ds = load_dataset("oddadmix/qari-0.2.2-naskh-dataset-large")
+    urdu_news_ds = load_dataset("oddadmix/qari-0.2.2-news-dataset-large")
 
-    persion_ocr_ds_train = load_dataset("ordaktaktak/Persian-OCR-230k", split="train")
-    persion_ocr_ds_test = load_dataset("ordaktaktak/Persian-OCR-230k", split="test")
+    def process_urdu(ds_split):
+        return force_image_schema(ds_split)
 
-    persion_ocr_ds_train = persion_ocr_ds_train.rename_column("fname", "image")
-    persion_ocr_ds_train = persion_ocr_ds_train.cast_column("image", Image())
-    persion_ocr_ds_test = persion_ocr_ds_test.rename_column("fname", "image")
-    persion_ocr_ds_test = persion_ocr_ds_test.cast_column("image", Image())
+    urdu_ds_train = concatenate_datasets([
+        process_urdu(nastaliq_ds["train"]),
+        process_urdu(naskh_ds["train"]),
+        process_urdu(urdu_news_ds["train"])
+    ])
 
-    persian_ds_train = concatenate_datasets(
-        [parsynth_ds_train,
-            persion_ocr_ds_train]
-    )
+    urdu_ds_test = concatenate_datasets([
+        process_urdu(nastaliq_ds["test"]),
+        process_urdu(naskh_ds["test"]),
+        process_urdu(urdu_news_ds["test"]),
+        process_urdu(urdu_news_ds["validation"])
+    ])
 
-    persian_ds_test = concatenate_datasets(
-       [ parsynth_ds_test,
-           persion_ocr_ds_test]
-    )
-
-    # Urdu
-    nastaliq_ds = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq")["train"]
-    nastaliq_ds_split = nastaliq_ds.train_test_split(test_size=0.2, seed=42)
-    nastaliq_ds_split = nastaliq_ds_split.cast_column("image", Image())
-    nastaliq_ds_train = nastaliq_ds_split["train"]
-    nastaliq_ds_test = nastaliq_ds_split["test"]
-
-    naskh_ds = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh")["train"]
-    naskh_ds_split = naskh_ds.train_test_split(test_size=0.2, seed=42)
-    naskh_ds_split = naskh_ds_split.cast_column("image", Image())
-    naskh_ds_train = naskh_ds_split["train"]
-    naskh_ds_test = naskh_ds_split["test"]
-
-    urdu_news_ds_train = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train")
-    urdu_news_ds_train = urdu_news_ds_train.cast_column("image", Image())
-
-    urdu_news_ds_test = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test")
-    urdu_news_ds_val = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation")
-
-    nastaliq_ds_train = nastaliq_ds_train.cast_column("image", Image())
-    naskh_ds_train = naskh_ds_train.cast_column("image", Image())
-    urdu_news_ds_train = urdu_news_ds_train.cast_column("image", Image())
-
-    combine_urdu_news_ds_test = concatenate_datasets(
-        [
-            cast(Dataset, urdu_news_ds_test),
-            cast(Dataset, urdu_news_ds_val)
-        ],
-        axis=0
-    )
-
-    urdu_ds_train = concatenate_datasets(
-        [nastaliq_ds_train,
-        naskh_ds_train,
-        urdu_news_ds_train],
-        axis=0
-    )
-
-    urdu_ds_test = concatenate_datasets(
-        [
-            nastaliq_ds_test,
-            naskh_ds_test,
-            combine_urdu_news_ds_test
-        ],
-        axis=0
-    )
-
-    all_datasets = [
-        ("arabic_train", ds_arabic_train),
-        ("persian_train", persian_ds_train),
-        ("urdu_train", urdu_ds_train),
-        ("arabic_test", ds_arabic_test),
-        ("persian_test", persian_ds_test),
-        ("urdu_test", urdu_ds_test)
-    ]
-
-    datasets_map = {
+    return {
         "train": {
-            "arabic": ds_arabic_train.cast_column("image", Image()),
-            "farsi": persian_ds_train.cast_column("image", Image()),
-            "urdu": urdu_ds_train.cast_column("image", Image())
+            "arabic": ds_arabic_train,
+            "farsi": parsynth_ds_train,
+            "urdu": urdu_ds_train
         },
         "test": {
-            "arabic": ds_arabic_test.cast_column("image", Image()),
-            "farsi": persian_ds_test.cast_column("image", Image()),
-            "urdu": urdu_ds_test.cast_column("image", Image())
+            "arabic": ds_arabic_test,
+            "farsi": parsynth_ds_test,
+            "urdu": urdu_ds_test
         }
     }
-    return datasets_map
