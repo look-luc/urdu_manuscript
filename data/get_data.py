@@ -2,10 +2,15 @@ import os
 
 from datasets import Image, IterableDataset, interleave_datasets, load_dataset
 
-PERSIAN_IMAGES_ROOT = "./data/Persian-OCR-230k"
+# Set the base directory to the folder containing your 'Images' directory
+# This allows os.path.join to find /.../Images/Images/filename.jpg
+IMAGE_BASE_DIR = "/projects/lude4390/urdu_manuscript/data/Persian-OCR-230k/Images"
 
-def resolve_persian_path(example):
-    example["image"] = os.path.join(PERSIAN_IMAGES_ROOT, example["image"])
+def resolve_path(example):
+    """Prepends the base directory to the image path."""
+    # Ensure the path is joined correctly
+    if not example["image"].startswith(IMAGE_BASE_DIR):
+        example["image"] = os.path.join(IMAGE_BASE_DIR, example["image"])
     return example
 
 def force_image_schema(ds):
@@ -31,11 +36,12 @@ def get_datasets():
     persian_ocr_dict = load_dataset("ordaktaktak/Persian-OCR-230k", streaming=False)
 
     persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image")
-    persian_ocr_train_mapped = persian_ocr_train_raw.map(resolve_persian_path)
+    # Resolve the paths using the newly set IMAGE_BASE_DIR
+    persian_ocr_train_mapped = persian_ocr_train_raw.map(resolve_path)
     persian_ocr_train: IterableDataset = force_image_schema(persian_ocr_train_mapped).to_iterable_dataset()
 
     persian_ocr_test_raw = persian_ocr_dict["test"].rename_column("fname", "image")
-    persian_ocr_test_mapped = persian_ocr_test_raw.map(resolve_persian_path)
+    persian_ocr_test_mapped = persian_ocr_test_raw.map(resolve_path)
     persian_ocr_test: IterableDataset = force_image_schema(persian_ocr_test_mapped).to_iterable_dataset()
 
     # Urdu
