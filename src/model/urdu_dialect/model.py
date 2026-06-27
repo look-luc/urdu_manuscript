@@ -46,6 +46,9 @@ class unification_urdu_lang_model:
     def _compute_metrics(self, eval_pred):
         logits, label_ids = eval_pred.predictions
 
+        if isinstance(logits, tuple):
+            logits = logits[0]
+
         # Converts raw logits into the most likely Token IDs
         # logits shape: (batch_size, sequence_length, vocab_size)
         pred_ids = np.argmax(logits, axis=-1)
@@ -59,39 +62,37 @@ class unification_urdu_lang_model:
         pred_ids = np.argmax(shift_logits, axis=-1)
         # Clean and decode row by row
         for i in range(len(label_ids)):
-            # Isolates the text the assistant was supposed to output (ignoring -100)
             valid_indices = shift_labels[i] != -100
 
             row_label_ids = shift_labels[i][valid_indices]
             row_pred_ids = pred_ids[i][valid_indices]
 
-            # Convert token IDs back to human-readable strings using the processor
-            pred_text = self.processor.tokenizer.decode(row_pred_ids, skip_special_tokens=True)
-            label_text = self.processor.tokenizer.decode(row_label_ids, skip_special_tokens=True)
+            print(f"DEBUG: pred={len(row_pred_ids)}, label={len(row_label_ids)}")
 
-            decoded_preds.append(pred_text)
-            decoded_labels.append(label_text)
+            if len(row_pred_ids) != len(row_label_ids):
+                min_len = min(len(row_pred_ids), len(row_label_ids))
+                row_pred_ids = row_pred_ids[:min_len]
+                row_label_ids = row_label_ids[:min_len]
+
+            decoded_preds.append(self.processor.tokenizer.decode(row_pred_ids, skip_special_tokens=True))
+            decoded_labels.append(self.processor.tokenizer.decode(row_label_ids, skip_special_tokens=True))
 
         # Metric Comparison Loop
         tp, fp, fn = 0, 0, 0
         for pred, target in zip(decoded_preds, decoded_labels):
-            if not pred.strip() or not target.strip(): #check if either are empty
-                continue
-
             p_arr = np.array(pred.split())
             t_arr = np.array(target.split())
 
-            # Ensure we are working with arrays
+            if p_arr.size == 0 and t_arr.size == 0:
+                continue
+
             unique_tokens = np.union1d(p_arr, t_arr)
-
             for token in unique_tokens:
-                pred_count = np.sum(p_arr == token)
-                target_count = np.sum(t_arr == token)
-
-                tp += min(pred_count, target_count)
-
-                fp += max(0, pred_count - target_count)
-                fn += max(0, target_count - pred_count)
+                p_count = np.sum(p_arr == token)
+                t_count = np.sum(t_arr == token)
+                tp += min(p_count, t_count)
+                fp += max(0, p_count - t_count)
+                fn += max(0, t_count - p_count)
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
