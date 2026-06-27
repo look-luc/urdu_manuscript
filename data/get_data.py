@@ -2,20 +2,29 @@ import os
 
 from datasets import Image, IterableDataset, interleave_datasets, load_dataset
 
-IMAGE_BASE_DIR = "/projects/lude4390/urdu_manuscript/data/Persian-OCR-230k"
+# Determine the absolute directory where get_data.py is located (/projects/.../urdu_manuscript/data)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Build the absolute path to the images directory regardless of where run.py is executed from
+IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 def resolve_path(example):
-    """Prepends the base directory to the image path."""
-    # Ensure the path is joined correctly
-    if not example["image"].startswith(IMAGE_BASE_DIR):
-        example["image"] = os.path.join(IMAGE_BASE_DIR, example["image"])
+    """Prepends the correct absolute base directory to the image path string or dictionary."""
+    # Handle case where 'image' is a dictionary from Image(decode=False)
+    if isinstance(example["image"], dict) and "path" in example["image"]:
+        path = example["image"]["path"]
+        if path and not path.startswith(IMAGE_BASE_DIR):
+            example["image"]["path"] = os.path.join(IMAGE_BASE_DIR, path)
+
+    # Handle case where 'image' is still a raw string
+    elif isinstance(example["image"], str):
+        if not example["image"].startswith(IMAGE_BASE_DIR):
+            example["image"] = os.path.join(IMAGE_BASE_DIR, example["image"])
+
     return example
 
 def force_image_schema(ds):
-    """Ensures the dataset has an 'image' feature of type Image."""
-    if "image" in ds.features and isinstance(ds.features["image"], Image):
-        return ds
-    return ds.cast_column("image", Image())
+    """Ensures the dataset has an 'image' feature of type Image without premature decoding."""
+    return ds.cast_column("image", Image(decode=False))
 
 def get_datasets():
     # --- Arabic ---
@@ -33,6 +42,7 @@ def get_datasets():
     # Persian
     persian_ocr_dict = load_dataset("ordaktaktak/Persian-OCR-230k", streaming=False)
 
+    # Clean, map paths, and keep decode=False so it doesn't crash during mapping
     persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image")
     persian_ocr_train_mapped = persian_ocr_train_raw.map(resolve_path, load_from_cache_file=False)
     persian_ocr_train: IterableDataset = force_image_schema(persian_ocr_train_mapped).to_iterable_dataset()
