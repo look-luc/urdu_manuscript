@@ -47,35 +47,41 @@ class unification_urdu_lang_model:
 
     def _compute_metrics(self, eval_pred):
         logits, label_ids = eval_pred.predictions
-
         if isinstance(logits, tuple):
             logits = logits[0]
 
         pred_ids = np.argmax(logits, axis=-1)
 
         decoded_preds = self.processor.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+
+        clean_label_ids = np.where(
+            label_ids != -100,
+            label_ids,
+            self.processor.tokenizer.pad_token_id
+        )
         decoded_labels = self.processor.tokenizer.batch_decode(
-            np.where(
-                label_ids != -100,
-                label_ids,
-                self.processor.tokenizer.pad_token_id
-            ),
+            clean_label_ids,
             skip_special_tokens=True
         )
 
-        print(f"DEBUG: Sample Pred: {decoded_preds[0]}")
-        print(f"DEBUG: Sample Label: {decoded_labels[0]}")
-
-        targets = [[label] for label in decoded_labels]
-        bleu_score_ocr = bleu_score(decoded_preds, targets, n_gram=4)
+        decoded_preds = [pred.strip() if pred.strip() else " " for pred in decoded_preds]
+        decoded_labels = [label.strip() if label.strip() else " " for label in decoded_labels]
 
         cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
         wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
 
+        preds_tokenized = [pred.split() for pred in decoded_preds]
+        labels_tokenized = [[label.split()] for label in decoded_labels]
+
+        try:
+            bleu_score_val = bleu_score(preds_tokenized, labels_tokenized).item()
+        except Exception:
+            bleu_score_val = 0.0
+
         return {
-            "BLEU score": bleu_score_ocr,
-            "CER score": cer_score,
-            "WER score": wer_score
+            "CER": cer_score,
+            "WER": wer_score,
+            "BLEU": bleu_score_val
         }
 
     def _setup (self):
