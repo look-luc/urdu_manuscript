@@ -9,7 +9,7 @@ def get_split_or_empty(ds, split_name):
     print(f"Warning: No valid split found. Available: {list(ds.keys())}")
     return None
 
-def force_image_schema(ds: Dataset) -> Dataset:
+def force_image_schema(ds):
     if ds.features["image"].dtype == "image":
         return ds
     return ds.cast_column("image", Image())
