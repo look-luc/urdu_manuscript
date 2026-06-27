@@ -70,11 +70,10 @@ class unification_urdu_lang_model:
         cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
         wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
 
-        preds_tokenized = [pred.split() for pred in decoded_preds]
-        labels_tokenized = [[label.split()] for label in decoded_labels]
+        bleu_targets = [[label] for label in decoded_labels]
 
         try:
-            bleu_score_val = bleu_score(preds_tokenized, labels_tokenized).item()
+            bleu_score_val = bleu_score(decoded_preds, bleu_targets).item()
         except Exception:
             bleu_score_val = 0.0
 
