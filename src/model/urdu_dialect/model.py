@@ -103,10 +103,14 @@ class unification_urdu_lang_model:
 
     def _process(self, example):
         image_input = example["image"]
+
         if isinstance(image_input, dict) and "path" in image_input:
             image_path = image_input["path"]
         else:
             image_path = image_input
+
+        if not os.path.isabs(image_path):
+            image_path = os.path.join(IMAGE_BASE_DIR, image_path)
 
         text = example["text"]
 
