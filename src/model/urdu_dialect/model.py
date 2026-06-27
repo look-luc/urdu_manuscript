@@ -15,13 +15,13 @@ from transformers import (
     TrainingArguments,
 )
 
-from data import get_data
-
-from .data_collector import Data_Collector
-
 root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
+
+from data import get_data
+
+from .data_collector import Data_Collector
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
@@ -102,7 +102,6 @@ class unification_urdu_lang_model:
         return  model, processor, data
 
     def _process(self, example):
-        # Use local variables instead of self.image to prevent race conditions
         image = example["image"]
         text = example["text"]
 
@@ -160,8 +159,6 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        # 2. Map the processing function to the entire interleaved stream
-        # This is now lazy and happens on-the-fly during training
         processed_train = train_dataset.map(self._process)
         processed_test = test_dataset.map(self._process)
 
