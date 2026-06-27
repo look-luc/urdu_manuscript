@@ -196,6 +196,10 @@ class unification_urdu_lang_model:
             save_steps=200,
             dataloader_num_workers=0,
             dataloader_pin_memory=False,
+            accelerator_config={
+                "dispatch_batches": False,
+                "split_batches": False
+            },
         )
 
         trainer = Trainer(
