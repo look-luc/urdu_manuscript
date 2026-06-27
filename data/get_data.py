@@ -17,7 +17,7 @@ def force_image_schema(ds: Dataset) -> Dataset:
 def get_datasets():
 
     # --- Arabic ---
-    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset", split="train", streaming=True)
+    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset", streaming=True)
 
     # Farsi
     parsynth_train = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True).rename_column("image_path", "image")
@@ -27,8 +27,8 @@ def get_datasets():
     persian_ocr_test = load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True).rename_column("fname", "image")
 
     # Urdu
-    nastaliq = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True)
-    naskh = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True)
+    nastaliq = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", streaming=True)
+    naskh = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", streaming=True)
     urdu_news = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True)
 
     urdu_news_test = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True)
@@ -36,9 +36,9 @@ def get_datasets():
 
     test_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.take(500)),
-            force_image_schema(nastaliq.take(500)),
-            force_image_schema(naskh.take(500)),
+            force_image_schema(ds_arabic["train"].take(500)),
+            force_image_schema(nastaliq["train"].take(500)),
+            force_image_schema(naskh["train"].take(500)),
             force_image_schema(urdu_news_test.take(500)),
             force_image_schema(parsynth_test.take(500)),
             force_image_schema(persian_ocr_test.take(500)),
