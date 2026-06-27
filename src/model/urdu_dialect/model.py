@@ -4,6 +4,7 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
+from evaluate import load
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
@@ -24,6 +25,7 @@ if str(root_dir) not in sys.path:
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
+f1_metric = load("f1")
 
 class unification_urdu_lang_model:
     def __init__(
@@ -43,61 +45,36 @@ class unification_urdu_lang_model:
 
         self.prompt = prompt
 
+    def _get_f1(pred, target):
+        pred_set = set(pred) #unique values
+        target_set = set(target) #unique values
+        if not pred_set or not target_set: return 0.0 # check if either are empty
+
+        intersection = len(pred_set.intersection(target_set)) #checking where both sets match
+        precision = intersection / len(pred_set) if pred_set else 0
+        recall = intersection / len(target_set) if target_set else 0
+        return (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
     def _compute_metrics(self, eval_pred):
         logits, label_ids = eval_pred.predictions
 
         if isinstance(logits, tuple):
             logits = logits[0]
 
-        # Converts raw logits into the most likely Token IDs
-        # logits shape: (batch_size, sequence_length, vocab_size)
         pred_ids = np.argmax(logits, axis=-1)
 
-        decoded_preds = []
-        decoded_labels = []
+        decoded_preds = self.processor.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
+        decoded_labels = self.processor.tokenizer.batch_decode(
+            np.where(
+                label_ids != -100,
+                label_ids,
+                self.processor.tokenizer.pad_token_id
+            ),
+            skip_special_tokens=True
+        )
 
-        shift_logits = logits[:, :-1, :]
-        shift_labels = label_ids[:, 1:]
-
-        pred_ids = np.argmax(shift_logits, axis=-1)
-        # Clean and decode row by row
-        for i in range(len(label_ids)):
-            valid_indices = shift_labels[i] != -100
-
-            row_label_ids = shift_labels[i][valid_indices]
-            row_pred_ids = pred_ids[i][valid_indices]
-
-            print(f"DEBUG: pred={len(row_pred_ids)}, label={len(row_label_ids)}")
-
-            if len(row_pred_ids) != len(row_label_ids):
-                min_len = min(len(row_pred_ids), len(row_label_ids))
-                row_pred_ids = row_pred_ids[:min_len]
-                row_label_ids = row_label_ids[:min_len]
-
-            decoded_preds.append(self.processor.tokenizer.decode(row_pred_ids, skip_special_tokens=True))
-            decoded_labels.append(self.processor.tokenizer.decode(row_label_ids, skip_special_tokens=True))
-
-        # Metric Comparison Loop
-        tp, fp, fn = 0, 0, 0
-        for pred, target in zip(decoded_preds, decoded_labels):
-            p_arr = np.array(pred.split())
-            t_arr = np.array(target.split())
-
-            if p_arr.size == 0 and t_arr.size == 0:
-                continue
-
-            unique_tokens = np.union1d(p_arr, t_arr)
-            for token in unique_tokens:
-                p_count = np.sum(p_arr == token)
-                t_count = np.sum(t_arr == token)
-                tp += min(p_count, t_count)
-                fp += max(0, p_count - t_count)
-                fn += max(0, t_count - p_count)
-
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-
-        f1_score = (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        print(f"DEBUG: Sample Pred: {decoded_preds[0]}")
+        print(f"DEBUG: Sample Label: {decoded_labels[0]}")
 
         targets = [[label] for label in decoded_labels]
         bleu_score_ocr = bleu_score(decoded_preds, targets, n_gram=4)
@@ -105,8 +82,12 @@ class unification_urdu_lang_model:
         cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
         wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
 
+        f1_scores = []
+        for p,t in zip(decoded_preds, decoded_labels):
+            f1_scores.append(get_f1(p,t))
+
         return {
-            "F1": f1_score,
+            "F1": np.mean(f1_scores),
             "BLEU score": bleu_score_ocr,
             "CER score": cer_score,
             "WER score": wer_score
