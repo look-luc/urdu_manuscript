@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
-from data import get_data
+from data.get_data import IMAGE_BASE_DIR, get_datasets
 
 from .data_collector import Data_Collector
 
@@ -97,13 +98,12 @@ class unification_urdu_lang_model:
         )
         processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
 
-        data = get_data.get_datasets()
+        data = get_datasets()
 
         return  model, processor, data
 
     def _process(self, example):
         image_input = example["image"]
-
         if isinstance(image_input, dict) and "path" in image_input:
             image_path = image_input["path"]
         else:
@@ -112,55 +112,32 @@ class unification_urdu_lang_model:
         if not os.path.isabs(image_path):
             image_path = os.path.join(IMAGE_BASE_DIR, image_path)
 
-        text = example["text"]
+        # 2. Validate file format and existence
+        supported_extensions = ('.jpeg', '.png', '.gif')
 
-        message = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "image": image_path,
-                        "min_pixels": 512 * 512,
-                        "max_pixels": 14 * 14 * 1024 * 1024
-                    },
-                    {
-                        "type": "text",
-                        "text": self.prompt
-                    }
-                ]
-            },
-            {
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": text
-                    }
-                ]
-            }
-        ]
+        if not os.path.exists(image_path):
+            return None
 
-        text_prompt = self.processor.apply_chat_template(
-            message,
-            tokenize=False,
-            return_assistant_tokens_mask=True,
-            add_generation_prompt=False
-        )
+        if not image_path.lower().endswith(supported_extensions):
+            print(f"Skipping unsupported file format: {image_path}")
+            return None
 
-        inputs = self.processor(
-            text=[text_prompt],
-            images=[image_path],
-            padding=False,
-            return_tensors='pt'
-        )
+        try:
+            text = example["text"]
+            text_prompt = f"<|im_start|>user\n{self.prompt}\n<|im_end|>\n<|im_start|>assistant\n{text}<|im_end|>"
 
-        return {
-            "input_ids": inputs["input_ids"][0],
-            "attention_mask": inputs["attention_mask"][0],
-            "pixel_values": inputs["pixel_values"],
-            "image_grid_thw": inputs["image_grid_thw"]
-        }
+            inputs = self.processor(
+                text=[text_prompt],
+                images=[image_path],
+                padding=False,
+                return_tensors='pt'
+            )
+
+            return inputs
+
+        except Exception as e:
+            print(f"Failed to process {image_path}: {e}")
+            return None
 
     def train(self):
         self.max_tokens = 2000
@@ -169,6 +146,8 @@ class unification_urdu_lang_model:
         test_dataset = self.data["test"]
 
         processed_train = train_dataset.map(self._process)
+        processed_train = processed_train.filter(lambda example: example is not None)
+
         processed_test = test_dataset.map(self._process)
 
         data_collector = Data_Collector(processor=self.processor)
