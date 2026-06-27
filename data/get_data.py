@@ -44,7 +44,6 @@ def get_datasets():
             force_image_schema(persian_ocr_test.take(500)),
             force_image_schema(urdu_news_val)
         ],
-        probabilities=[1/7, 1/7, 1/7, 1/7, 1/7],
         seed=42
     )
 
@@ -57,7 +56,6 @@ def get_datasets():
             force_image_schema(parsynth_train),
             force_image_schema(persian_ocr_train)
         ],
-        probabilities=[1/6, 1/6, 1/6, 1/6, 1/6],
         seed=42,
         stopping_strategy="all_exhausted"
     )
