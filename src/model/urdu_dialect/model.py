@@ -4,7 +4,6 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-from datasets import concatenate_datasets
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
@@ -76,9 +75,13 @@ class unification_urdu_lang_model:
         # Metric Comparison Loop
         tp, fp, fn = 0, 0, 0
         for pred, target in zip(decoded_preds, decoded_labels):
+            if not pred.strip() or not target.strip(): #check if either are empty
+                continue
+
             p_arr = np.array(pred.split())
             t_arr = np.array(target.split())
 
+            # Ensure we are working with arrays
             unique_tokens = np.union1d(p_arr, t_arr)
 
             for token in unique_tokens:
