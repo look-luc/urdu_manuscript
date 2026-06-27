@@ -19,20 +19,21 @@ def get_datasets():
     ds_arabic: IterableDataset = load_dataset("mssqpi/Arabic-OCR-Dataset", split="train", streaming=True) # type: ignore
 
     # Farsi
-    parsynth_train_raw = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True).rename_column("image_path", "image")
-    parsynth_train = force_image_schema(parsynth_train_raw)
+    parsynth_train_load = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True)
+    parsynth_train_raw = parsynth_train_load.rename_column("image_path", "image") # type: ignore
+    parsynth_train: IterableDataset = force_image_schema(parsynth_train_raw)
 
-    parsynth_test_raw = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True).rename_column("image_path", "image")
-    parsynth_test: IterableDataset = force_image_schema(parsynth_test_raw) # type: ignore
+    parsynth_test_load = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True)
+    parsynth_test_raw = parsynth_test_load.rename_column("image_path", "image") # type: ignore
+    parsynth_test: IterableDataset = force_image_schema(parsynth_test_raw)
 
-    # FIX: Load the dataset first, extract the split explicitly by key, then apply transformations
     persian_ocr_dict = load_dataset("ordaktaktak/Persian-OCR-230k", streaming=False)
 
-    persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image") # type: ignore
-    persian_ocr_train: IterableDataset = force_image_schema(persian_ocr_train_raw).to_iterable_dataset()
+    persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image")
+    persian_ocr_train = force_image_schema(persian_ocr_train_raw).to_iterable_dataset()
 
-    persian_ocr_test_raw = persian_ocr_dict["test"].rename_column("fname", "image") # type: ignore
-    persian_ocr_test: IterableDataset = force_image_schema(persian_ocr_test_raw).to_iterable_dataset()
+    persian_ocr_test_raw = persian_ocr_dict["test"].rename_column("fname", "image")
+    persian_ocr_test = force_image_schema(persian_ocr_test_raw).to_iterable_dataset()
 
     # Urdu
     nastaliq: IterableDataset = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True) # type: ignore
@@ -44,25 +45,25 @@ def get_datasets():
 
     test_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.take(500)),
-            force_image_schema(nastaliq.take(500)),
-            force_image_schema(naskh.take(500)),
-            force_image_schema(urdu_news_test),
-            force_image_schema(parsynth_test),
-            force_image_schema(persian_ocr_test),
-            force_image_schema(urdu_news_va)
+            force_image_schema(ds_arabic.take(500)), # type: ignore
+            force_image_schema(nastaliq.take(500)), # type: ignore
+            force_image_schema(naskh.take(500)), # type: ignore
+            force_image_schema(urdu_news_test), # type: ignore
+            parsynth_test,
+            persian_ocr_test,
+            force_image_schema(urdu_news_val) # type: ignore
         ],
         seed=42
     )
 
     train_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.skip(500)),
-            force_image_schema(nastaliq.skip(500)),
-            force_image_schema(naskh.skip(500)),
-            force_image_schema(urdu_news),
-            parsynth_train,  # Now safe to interleave
-            force_image_schema(persian_ocr_trai)
+            force_image_schema(ds_arabic.skip(500)), # type: ignore
+            force_image_schema(nastaliq.skip(500)), # type: ignore
+            force_image_schema(naskh.skip(500)), # type: ignore
+            force_image_schema(urdu_news), # type: ignore
+            parsynth_train,
+            persian_ocr_train
         ],
         seed=42,
         stopping_strategy="all_exhausted"
