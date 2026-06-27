@@ -1,4 +1,4 @@
-from datasets import Image, interleave_datasets, load_dataset
+from datasets import Image, IterableDataset, interleave_datasets, load_dataset
 
 
 def get_split_or_empty(ds, split_name):
@@ -17,44 +17,47 @@ def force_image_schema(ds):
 def get_datasets():
 
     # --- Arabic ---
-    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset", split="train", streaming=True)
+    ds_arabic: IterableDataset = load_dataset("mssqpi/Arabic-OCR-Dataset", split="train", streaming=True) # type: ignore
 
     # Farsi
-    parsynth_train = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True).rename_column("image_path", "image")
-    parsynth_test = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True).rename_column("image_path", "image")
+    parsynth_train: IterableDataset = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True).rename_column("image_path", "image") # type: ignore
+    parsynth_test: IterableDataset = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True).rename_column("image_path", "image") # type: ignore
 
-    persian_ocr_train = load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=False).rename_column("fname", "image")
-    persian_ocr_test = load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=False).rename_column("fname", "image")
+    persian_ocr_train_raw = load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=False).rename_column("fname", "image")
+    persian_ocr_train: IterableDataset = force_image_schema(persian_ocr_train_raw).to_iterable_dataset()
+
+    persian_ocr_test_raw = load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=False).rename_column("fname", "image")
+    persian_ocr_test: IterableDataset = force_image_schema(persian_ocr_test_raw).to_iterable_dataset()
 
     # Urdu
-    nastaliq = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True)
-    naskh = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True)
-    urdu_news = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True)
+    nastaliq: IterableDataset = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True) # type: ignore
+    naskh: IterableDataset = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True) # type: ignore
+    urdu_news: IterableDataset = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True) # type: ignore
 
-    urdu_news_test = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True)
-    urdu_news_val = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True)
+    urdu_news_test: IterableDataset = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True) # type: ignore
+    urdu_news_val: IterableDataset = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True) # type: ignore
 
     test_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.take(500)),
-            force_image_schema(nastaliq.take(500)),
-            force_image_schema(naskh.take(500)),
-            force_image_schema(urdu_news_test.take(500)),
-            force_image_schema(parsynth_test.take(500)),
-            force_image_schema(persian_ocr_test.take(500)),
-            force_image_schema(urdu_news_val)
+            ds_arabic.take(500),
+            nastaliq.take(500),
+            naskh.take(500),
+            urdu_news_test.,
+            parsynth_test,
+            persian_ocr_test,
+            urdu_news_val
         ],
         seed=42
     )
 
     train_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.skip(500)),
-            force_image_schema(nastaliq.skip(500)),
-            force_image_schema(naskh.skip(500)),
-            force_image_schema(urdu_news),
-            force_image_schema(parsynth_train),
-            force_image_schema(persian_ocr_train)
+            ds_arabic.skip(500),
+            nastaliq.skip(500),
+            naskh.skip(500),
+            urdu_news,
+            parsynth_train,
+            persian_ocr_train
         ],
         seed=42,
         stopping_strategy="all_exhausted"
