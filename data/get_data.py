@@ -42,7 +42,7 @@ def get_datasets():
             ds_arabic.take(500),
             nastaliq.take(500),
             naskh.take(500),
-            urdu_news_test.,
+            urdu_news_test,
             parsynth_test,
             persian_ocr_test,
             urdu_news_val
