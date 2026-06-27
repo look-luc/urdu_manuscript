@@ -45,16 +45,6 @@ class unification_urdu_lang_model:
 
         self.prompt = prompt
 
-    def _get_f1(pred, target):
-        pred_set = set(pred) #unique values
-        target_set = set(target) #unique values
-        if not pred_set or not target_set: return 0.0 # check if either are empty
-
-        intersection = len(pred_set.intersection(target_set)) #checking where both sets match
-        precision = intersection / len(pred_set) if pred_set else 0
-        recall = intersection / len(target_set) if target_set else 0
-        return (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-
     def _compute_metrics(self, eval_pred):
         logits, label_ids = eval_pred.predictions
 
@@ -82,12 +72,7 @@ class unification_urdu_lang_model:
         cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
         wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
 
-        f1_scores = []
-        for p,t in zip(decoded_preds, decoded_labels):
-            f1_scores.append(get_f1(p,t))
-
         return {
-            "F1": np.mean(f1_scores),
             "BLEU score": bleu_score_ocr,
             "CER score": cer_score,
             "WER score": wer_score
