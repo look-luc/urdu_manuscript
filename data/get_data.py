@@ -23,8 +23,8 @@ def get_datasets():
     parsynth_train = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True).rename_column("image_path", "image")
     parsynth_test = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True).rename_column("image_path", "image")
 
-    persian_ocr_train = load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True).rename_column("fname", "image")
-    persian_ocr_test = load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True).rename_column("fname", "image")
+    persian_ocr_train = load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=False).rename_column("fname", "image")
+    persian_ocr_test = load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=False).rename_column("fname", "image")
 
     # Urdu
     nastaliq = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True)
