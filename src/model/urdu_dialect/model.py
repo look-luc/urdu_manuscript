@@ -182,35 +182,13 @@ class unification_urdu_lang_model:
     def train(self):
         self.max_tokens = 2000
 
-        arabic_data_train = self.data["train"]["arabic"]
-        urdu_data_train = self.data["train"]["urdu"]
-        farsi_data_train = self.data["train"]["farsi"]
+        train_dataset = self.data["train"]
+        test_dataset = self.data["test"]
 
-        arabic_data_test = self.data["test"]["arabic"]
-        urdu_data_test = self.data["test"]["urdu"]
-        farsi_data_test = self.data["test"]["farsi"]
-
-        processed_arabic_train = arabic_data_train.map(self._process, batched=True, num_proc=8)
-        processed_urdu_train = urdu_data_train.map(self._process, batched=True, num_proc=8)
-        processed_farsi_train = farsi_data_train.map(self._process, batched=True, num_proc=8)
-
-        columns_to_keep = ["input_ids", "attention_mask", "pixel_values", "image_grid_thw"]
-
-        train_data = concatenate_datasets([
-            processed_arabic_train.select_columns(columns_to_keep),
-            processed_urdu_train.select_columns(columns_to_keep),
-            processed_farsi_train.select_columns(columns_to_keep)
-        ])
-
-        processed_arabic_test = arabic_data_test.map(self._process, batched=True, num_proc=8)
-        processed_urdu_test = urdu_data_test.map(self._process, batched=True, num_proc=8)
-        processed_farsi_test = farsi_data_test.map(self._process, batched=True, num_proc=8)
-
-        test_data = concatenate_datasets([
-            processed_arabic_test.select_columns(columns_to_keep),
-            processed_urdu_test.select_columns(columns_to_keep),
-            processed_farsi_test.select_columns(columns_to_keep)
-        ])
+        # 2. Map the processing function to the entire interleaved stream
+        # This is now lazy and happens on-the-fly during training
+        processed_train = train_dataset.map(self._process)
+        processed_test = test_dataset.map(self._process)
 
         data_collector = Data_Collector(processor=self.processor)
 
@@ -228,28 +206,28 @@ class unification_urdu_lang_model:
         training_args = TrainingArguments(
             output_dir="./results",
             ignore_data_skip=True,
-            per_device_train_batch_size=1,      # Minimize active batch memory footprint
-            gradient_accumulation_steps=4,      # Simulates a batch size of 4 safely
-            gradient_checkpointing=True,        # Crucial OOM mitigation flag
-            bf16=True,                          # Ensures bfloat16 math optimization
-            optim="adamw_torch_fused",          # Memory-efficient execution choice
-            remove_unused_columns=False,        # MANDATORY: do not drop visual columns
+            per_device_train_batch_size=1,
+            gradient_accumulation_steps=4,
+            gradient_checkpointing=True,
+            bf16=True,
+            optim="adamw_torch_fused",
+            remove_unused_columns=False,
             learning_rate=2e-5,
             logging_steps=10,
+            max_steps=5000,
             eval_strategy="steps",
             eval_steps=100,
             save_strategy="steps",
             save_steps=200,
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
-            group_by_length=True,
         )
 
         trainer = Trainer(
             model=self.model,
             args=training_args,
-            train_dataset=train_data,
-            eval_dataset=test_data,
+            train_dataset=processed_train,
+            eval_dataset=processed_test,
             data_collator=data_collector,
             compute_metrics=self._compute_metrics,
         )
