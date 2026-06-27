@@ -1,6 +1,4 @@
-from typing import cast
-
-from datasets import Dataset, Image, concatenate_datasets, load_dataset
+from datasets import Image, interleave_datasets, load_dataset
 
 
 def get_split_or_empty(ds, split_name):
@@ -19,57 +17,52 @@ def force_image_schema(ds: Dataset) -> Dataset:
 def get_datasets():
 
     # --- Arabic ---
-    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset")["train"]
-    ds_arabic = force_image_schema(ds_arabic)
-    ds_arabic_split = ds_arabic.train_test_split(test_size=0.2, seed=42)
-    ds_arabic_train, ds_arabic_test = ds_arabic_split["train"], ds_arabic_split["test"]
+    ds_arabic = load_dataset("mssqpi/Arabic-OCR-Dataset", split="train", streaming=True)
 
-    # --- Farsi/Persian ---
-    parsynth_ds_train = load_dataset("hezarai/parsynth-ocr-200k", split="train")
-    parsynth_ds_test = load_dataset("hezarai/parsynth-ocr-200k", split="test")
+    # Farsi
+    parsynth_train = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True).rename_column("image_path", "image")
+    parsynth_test = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True).rename_column("image_path", "image")
 
-    parsynth_ds_train = parsynth_ds_train.rename_column("image_path", "image")
-    parsynth_ds_test = parsynth_ds_test.rename_column("image_path", "image")
+    persian_ocr_train = load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True).rename_column("fname", "image")
+    persian_ocr_test = load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True).rename_column("fname", "image")
 
-    parsynth_ds_train = force_image_schema(parsynth_ds_train)
-    parsynth_ds_test = force_image_schema(parsynth_ds_test)
+    # Urdu
+    nastaliq = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True)
+    naskh = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True)
+    urdu_news = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True)
 
-    # --- Urdu Datasets ---
-    nastaliq_ds = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", keep_in_memory=False)
-    naskh_ds = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh")
-    urdu_news_ds = load_dataset("oddadmix/qari-0.2.2-news-dataset-large")
+    urdu_news_test = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True)
+    urdu_news_val = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True)
 
-    def process_urdu(ds_split):
-        return force_image_schema(ds_split)
+    test_dataset = interleave_datasets(
+        [
+            force_image_schema(ds_arabic.take(500)),
+            force_image_schema(nastaliq.take(500)),
+            force_image_schema(naskh.take(500)),
+            force_image_schema(urdu_news_test.take(500)),
+            force_image_schema(parsynth_test.take(500)),
+            force_image_schema(persian_ocr_test.take(500)),
+            force_image_schema(urdu_news_val)
+        ],
+        probabilities=[0.2, 0.2, 0.2, 0.2, 0.2],
+        seed=42
+    )
 
-    # 1. Collect Training Splits
-    urdu_train_splits = [
-        process_urdu(nastaliq_ds["train"]),
-        process_urdu(naskh_ds["train"]),
-        process_urdu(urdu_news_ds["train"])
-    ]
-    urdu_ds_train = concatenate_datasets(urdu_train_splits)
-
-    urdu_test_splits = []
-    for ds in [nastaliq_ds, naskh_ds, urdu_news_ds]:
-        split = get_split_or_empty(ds, "test") or get_split_or_empty(ds, "validation")
-        if split:
-            urdu_test_splits.append(process_urdu(split))
-
-    if urdu_test_splits:
-        urdu_ds_test = concatenate_datasets(urdu_test_splits)
-    else:
-        raise ValueError("No test or validation splits found in Urdu datasets.")
+    train_dataset = interleave_datasets(
+        [
+            force_image_schema(ds_arabic.skip(500)),
+            force_image_schema(nastaliq.skip(500)),
+            force_image_schema(naskh.skip(500)),
+            force_image_schema(urdu_news),
+            force_image_schema(parsynth_train),
+            force_image_schema(persian_ocr_train)
+        ],
+        probabilities=[0.2, 0.2, 0.2, 0.2, 0.2],
+        seed=42,
+        stopping_strategy="all_exhausted"
+    )
 
     return {
-        "train": {
-            "arabic": ds_arabic_train,
-            "farsi": parsynth_ds_train,
-            "urdu": urdu_ds_train
-        },
-        "test": {
-            "arabic": ds_arabic_test,
-            "farsi": parsynth_ds_test,
-            "urdu": urdu_ds_test
-        }
+        "train": train_dataset,
+        "test": test_dataset
     }

@@ -190,9 +190,9 @@ class unification_urdu_lang_model:
         urdu_data_test = self.data["test"]["urdu"]
         farsi_data_test = self.data["test"]["farsi"]
 
-        processed_arabic_train = arabic_data_train.map(self._process)
-        processed_urdu_train = urdu_data_train.map(self._process)
-        processed_farsi_train = farsi_data_train.map(self._process)
+        processed_arabic_train = arabic_data_train.map(self._process, batched=True, num_proc=8)
+        processed_urdu_train = urdu_data_train.map(self._process, batched=True, num_proc=8)
+        processed_farsi_train = farsi_data_train.map(self._process, batched=True, num_proc=8)
 
         columns_to_keep = ["input_ids", "attention_mask", "pixel_values", "image_grid_thw"]
 
@@ -202,9 +202,9 @@ class unification_urdu_lang_model:
             processed_farsi_train.select_columns(columns_to_keep)
         ])
 
-        processed_arabic_test = arabic_data_test.map(self._process)
-        processed_urdu_test = urdu_data_test.map(self._process)
-        processed_farsi_test = farsi_data_test.map(self._process)
+        processed_arabic_test = arabic_data_test.map(self._process, batched=True, num_proc=8)
+        processed_urdu_test = urdu_data_test.map(self._process, batched=True, num_proc=8)
+        processed_farsi_test = farsi_data_test.map(self._process, batched=True, num_proc=8)
 
         test_data = concatenate_datasets([
             processed_arabic_test.select_columns(columns_to_keep),

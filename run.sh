@@ -17,8 +17,8 @@ export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
 
 mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
 
-# Bypass modules and source Conda directly
-source /projects/$USER/miniconda3/etc/profile.d/conda.sh
+module purge
+module load anaconda
 conda activate urdu_manuscript_stable
 
 cd /projects/$USER/urdu_manuscript
