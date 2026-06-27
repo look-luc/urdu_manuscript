@@ -102,7 +102,12 @@ class unification_urdu_lang_model:
         return  model, processor, data
 
     def _process(self, example):
-        image = example["image"]
+        image_input = example["image"]
+        if isinstance(image_input, dict) and "path" in image_input:
+            image_path = image_input["path"]
+        else:
+            image_path = image_input
+
         text = example["text"]
 
         message = [
@@ -111,7 +116,7 @@ class unification_urdu_lang_model:
                 "content": [
                     {
                         "type": "image",
-                        "image": image,
+                        "image": image_path,
                         "min_pixels": 512 * 512,
                         "max_pixels": 14 * 14 * 1024 * 1024
                     },
@@ -141,7 +146,7 @@ class unification_urdu_lang_model:
 
         inputs = self.processor(
             text=[text_prompt],
-            images=[image],
+            images=[image_path],
             padding=False,
             return_tensors='pt'
         )
