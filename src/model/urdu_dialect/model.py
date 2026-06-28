@@ -103,26 +103,26 @@ class unification_urdu_lang_model:
         return  model, processor, data
 
     def _process(self, example):
-        image_input = example["image"]
-        if isinstance(image_input, dict) and "path" in image_input:
-            image_path = image_input["path"]
-        else:
-            image_path = image_input
-
-        if not os.path.isabs(image_path):
-            image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-
-        # 2. Validate file format and existence
-        supported_extensions = ('.jpeg', '.png', '.gif')
-
-        if not os.path.exists(image_path):
-            return None
-
-        if not image_path.lower().endswith(supported_extensions):
-            print(f"Skipping unsupported file format: {image_path}")
-            return None
-
         try:
+            image_input = example["image"]
+            if isinstance(image_input, dict) and "path" in image_input:
+                image_path = image_input["path"]
+            else:
+                image_path = image_input
+
+            if not os.path.isabs(image_path):
+                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+
+            # Validate file format and existence
+            supported_extensions = ('.jpeg', '.png', '.gif')
+
+            if not os.path.exists(image_path):
+                return {"is_valid": False}
+
+            if not image_path.lower().endswith(supported_extensions):
+                print(f"Skipping unsupported file format: {image_path}")
+                return {"is_valid": False}
+
             text = example["text"]
             text_prompt = f"<|im_start|>user\n{self.prompt}\n<|im_end|>\n<|im_start|>assistant\n{text}<|im_end|>"
 
@@ -133,11 +133,14 @@ class unification_urdu_lang_model:
                 return_tensors='pt'
             )
 
-            return inputs
+            # Convert to a standard dictionary and tag as structurally valid
+            inputs_dict = {k: v for k, v in inputs.items()}
+            inputs_dict["is_valid"] = True
+            return inputs_dict
 
         except Exception as e:
-            print(f"Failed to process {image_path}: {e}")
-            return None
+            print(f"Failed to process {image_path if 'image_path' in locals() else 'unknown'}: {e}")
+            return {"is_valid": False}
 
     def train(self):
         self.max_tokens = 2000
@@ -145,10 +148,9 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        processed_train = train_dataset.map(self._process)
-        processed_train = processed_train.filter(lambda example: example is not None)
-
-        processed_test = test_dataset.map(self._process)
+        # Filter out invalid rows using the returned boolean dictionary flag
+        processed_train = train_dataset.map(self._process).filter(lambda example: example.get("is_valid", False))
+        processed_test = test_dataset.map(self._process).filter(lambda x: x.get("is_valid", False))
 
         data_collector = Data_Collector(processor=self.processor)
 
