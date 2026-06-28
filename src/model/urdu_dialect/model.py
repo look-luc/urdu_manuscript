@@ -151,30 +151,33 @@ class unification_urdu_lang_model:
                 }
             ]
 
-            text_prompt = self.processor.apply_chat_template(
+            text = self.processor.apply_chat_template(
                 message,
                 tokenize=False,
-                add_generation_prompt=False
+                add_generation_prompt=True
             )
 
-            inputs = self.processor(
-                text=[text_prompt],
-                images=[image_tensor],
-                padding=False,
-                truncation=True,
-                max_length=512,
-                return_tensors="pt"
-            )
+            try:
+                # FIX: Restrict both image resolution and total sequence tokens
+                inputs = self.processor(
+                    text=[text],
+                    images=[image_tensor],
+                    padding=False,
+                    truncation=True,
+                    max_length=1024,
+                    min_pixels=256 * 256,
+                    max_pixels=512 * 512,
+                    return_tensors="pt"
+                )
 
-            inputs_dict = {}
-            for k, v in inputs.items():
-                if k in ["input_ids", "attention_mask"] and isinstance(v, torch.Tensor):
-                    inputs_dict[k] = v.squeeze(0)
-                else:
-                    inputs_dict[k] = v
+                # Squeeze batch dimension for the dataset map function
+                input_dict = {k: v.squeeze(0) for k, v in inputs.items()}
+                input_dict["is_valid"] = True
+                return input_dict
 
-            inputs_dict["is_valid"] = True
-            return inputs_dict
+            except Exception as e:
+                print(f"Skipping corrupt processed example: {e}")
+                return {"is_valid": False}
 
         except Exception as e:
             print(f"Failed to process sample: {e}")
