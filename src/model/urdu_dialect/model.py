@@ -135,7 +135,27 @@ class unification_urdu_lang_model:
             image_tensor = image_tensor.permute(1, 2, 0)
 
             text = example["text"]
-            text_prompt = f"<|im_start|>user\n{self.prompt}\n<|im_end|>\n<|im_start|>assistant\n{text}<|im_end|>"
+            message = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt}
+                    ]
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": text}
+                    ]
+                }
+            ]
+
+            text_prompt = self.processor.apply_chat_template(
+                message,
+                tokenize=False,
+                add_generation_prompt=False
+            )
 
             inputs = self.processor(
                 text=[text_prompt],
