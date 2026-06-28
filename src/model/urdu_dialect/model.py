@@ -5,6 +5,7 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
+import torchvision.io as tv_io  # Added for native tensor image decoding
 from evaluate import load
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
@@ -105,41 +106,56 @@ class unification_urdu_lang_model:
     def _process(self, example):
         try:
             image_input = example["image"]
-            if isinstance(image_input, dict) and "path" in image_input:
-                image_path = image_input["path"]
-            else:
+            image_tensor = None
+
+            if isinstance(image_input, dict):
+                if image_input.get("bytes") is not None:
+                    raw_bytes = image_input["bytes"]
+                    storage_tensor = torch.frombuffer(raw_bytes, dtype=torch.uint8)
+                    image_tensor = tv_io.decode_image(storage_tensor, mode=tv_io.ImageReadMode.RGB)
+                elif image_input.get("path") is not None:
+                    image_path = image_input["path"]
+                    if not os.path.isabs(image_path):
+                        image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+                    if os.path.exists(image_path):
+                        image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
+
+            elif isinstance(image_input, str):
                 image_path = image_input
+                if not os.path.isabs(image_path):
+                    image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+                if os.path.exists(image_path):
+                    image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
 
-            if not os.path.isabs(image_path):
-                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-
-            # Validate file format and existence
-            supported_extensions = ('.jpeg', '.png', '.gif')
-
-            if not os.path.exists(image_path):
+            if image_tensor is None:
                 return {"is_valid": False}
 
-            if not image_path.lower().endswith(supported_extensions):
-                print(f"Skipping unsupported file format: {image_path}")
-                return {"is_valid": False}
+            # Standard Hugging Face vision processors process raw tensors assuming Channels-Last order
+            # to avoid misinterpreting width/height dimensions as color channels.
+            image_tensor = image_tensor.permute(1, 2, 0)
 
             text = example["text"]
             text_prompt = f"<|im_start|>user\n{self.prompt}\n<|im_end|>\n<|im_start|>assistant\n{text}<|im_end|>"
 
             inputs = self.processor(
                 text=[text_prompt],
-                images=[image_path],
+                images=[image_tensor],
                 padding=False,
                 return_tensors='pt'
             )
 
-            # Convert to a standard dictionary and tag as structurally valid
-            inputs_dict = {k: v for k, v in inputs.items()}
+            inputs_dict = {}
+            for k, v in inputs.items():
+                if k in ["input_ids", "attention_mask"] and isinstance(v, torch.Tensor):
+                    inputs_dict[k] = v.squeeze(0)
+                else:
+                    inputs_dict[k] = v
+
             inputs_dict["is_valid"] = True
             return inputs_dict
 
         except Exception as e:
-            print(f"Failed to process {image_path if 'image_path' in locals() else 'unknown'}: {e}")
+            print(f"Failed to process sample: {e}")
             return {"is_valid": False}
 
     def train(self):
