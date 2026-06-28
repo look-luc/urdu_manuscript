@@ -161,7 +161,9 @@ class unification_urdu_lang_model:
                 text=[text_prompt],
                 images=[image_tensor],
                 padding=False,
-                return_tensors='pt'
+                truncation=True,
+                max_length=512,
+                return_tensors="pt"
             )
 
             inputs_dict = {}
@@ -205,6 +207,8 @@ class unification_urdu_lang_model:
             output_dir="./results",
             ignore_data_skip=True,
             per_device_train_batch_size=1,
+            per_device_eval_batch_size=1,
+            eval_accumulation_steps=1,
             gradient_accumulation_steps=4,
             gradient_checkpointing=True,
             bf16=True,
