@@ -99,13 +99,31 @@ class unification_urdu_lang_model:
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
             torch_dtype="auto",
-            device_map=self.device
         )
-        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512).to(self.device)
+        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
 
         data = get_datasets()
 
         return  model, processor, data
+
+    def _is_valid_header(bytes_data):
+        if len(bytes_data) < 4:
+            return False
+        if bytes_data[0] == 0xFF and bytes_data[1] == 0xD8 and bytes_data[2] == 0xFF:
+            return True
+        elif bytes_data[0] == 0x89 and bytes_data[1] == 0x50 and bytes_data[2] == 0x4E and bytes_data[3] == 0x47:
+            return True
+        return False
+
+    def _is_valid_file(path: str) -> bool:
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "rb") as f:
+                header = f.read(4)
+            return unification_urdu_lang_model._is_valid_header(header)
+        except Exception:
+            return False
 
     def _process(self, example):
         image_input = example["image"]
@@ -114,27 +132,27 @@ class unification_urdu_lang_model:
         if isinstance(image_input, dict):
             if image_input.get("bytes") is not None:
                 raw_bytes = image_input["bytes"]
+                if not self._is_valid_header(raw_bytes):
+                    return {"is_valid": False}
                 storage_tensor = torch.frombuffer(raw_bytes, dtype=torch.uint8)
                 image_tensor = tv_io.decode_image(storage_tensor, mode=tv_io.ImageReadMode.RGB)
             elif image_input.get("path") is not None:
                 image_path = image_input["path"]
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-                if os.path.exists(image_path):
+                if self._is_valid_file(image_path):
                     image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
 
         elif isinstance(image_input, str):
             image_path = image_input
             if not os.path.isabs(image_path):
                 image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-            if os.path.exists(image_path):
+            if self._is_valid_file(image_path):
                 image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
 
         if image_tensor is None:
             return {"is_valid": False}
 
-        # Standard Hugging Face vision processors process raw tensors assuming Channels-Last order
-        # to avoid misinterpreting width/height dimensions as color channels.
         image_tensor = image_tensor.permute(1, 2, 0)
 
         text = example["text"]
@@ -143,21 +161,17 @@ class unification_urdu_lang_model:
                 "role": "user",
                 "content": [
                     {"type": "image"},
-                    {"type": "text", "text": self.prompt}
-                ]
+                    {"type": "text", "text": self.prompt},
+                ],
             },
             {
                 "role": "assistant",
-                "content": [
-                    {"type": "text", "text": text}
-                ]
-            }
+                "content": [{"type": "text", "text": text}],
+            },
         ]
 
         text = self.processor.apply_chat_template(
-            message,
-            tokenize=False,
-            add_generation_prompt=False
+            message, tokenize=False, add_generation_prompt=False
         )
 
         inputs = self.processor(
@@ -168,10 +182,9 @@ class unification_urdu_lang_model:
             max_length=1024,
             min_pixels=256 * 256,
             max_pixels=512 * 512,
-            return_tensors="pt"
-        )
+            return_tensors="pt",
+        ).to(self.device)
 
-        # Squeeze batch dimension for the dataset map function
         input_dict = {k: v.squeeze(0) for k, v in inputs.items()}
         input_dict["is_valid"] = True
         return input_dict
@@ -188,11 +201,11 @@ class unification_urdu_lang_model:
 
         data_collector = Data_Collector(processor=self.processor)
 
-        peft_config = create_lora_config(
+        peft_config = LoraConfig(
             r=16,
             lora_alpha=32,
             target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-            task_type="casual_lm"
+            task_type="CAUSAL_LM"
         )
 
         self.model = get_peft_model(self.model, peft_config)
@@ -205,7 +218,6 @@ class unification_urdu_lang_model:
             per_device_eval_batch_size=1,
             eval_accumulation_steps=1,
             gradient_accumulation_steps=4,
-            gradient_checkpointing=True,
             bf16=True,
             optim="adamw_torch_fused",
             remove_unused_columns=False,
