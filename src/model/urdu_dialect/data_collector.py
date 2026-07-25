@@ -18,11 +18,13 @@ class Data_Collector:
 
         input_ids_list = [feature["input_ids"] for feature in features]
         attention_mask_list = [feature["attention_mask"] for feature in features]
-        padded_text = self.tokenizer.pad(
+        padded_text = self.processor.pad(
             {
                 "input_ids": input_ids_list,
                 "attention_mask": attention_mask_list
-            }
+            },
+            padding = True,
+            return_tensors = "pt"
         )
 
         # Extracts the visual features safely
