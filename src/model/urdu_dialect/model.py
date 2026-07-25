@@ -86,102 +86,85 @@ class unification_urdu_lang_model:
         }
 
     def _setup (self):
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_quant_type="nf4"
-        )
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            torch_dtype=torch.bfloat16,
-            quantization_config=quantization_config,
-            attn_implementation="sdpa"
+            torch_dtype="auto",
+            device_map=self.device
         )
-        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
+        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512).to(self.device)
 
         data = get_datasets()
 
         return  model, processor, data
 
     def _process(self, example):
-        try:
-            image_input = example["image"]
-            image_tensor = None
+        image_input = example["image"]
+        image_tensor = None
 
-            if isinstance(image_input, dict):
-                if image_input.get("bytes") is not None:
-                    raw_bytes = image_input["bytes"]
-                    storage_tensor = torch.frombuffer(raw_bytes, dtype=torch.uint8)
-                    image_tensor = tv_io.decode_image(storage_tensor, mode=tv_io.ImageReadMode.RGB)
-                elif image_input.get("path") is not None:
-                    image_path = image_input["path"]
-                    if not os.path.isabs(image_path):
-                        image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-                    if os.path.exists(image_path):
-                        image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
-
-            elif isinstance(image_input, str):
-                image_path = image_input
+        if isinstance(image_input, dict):
+            if image_input.get("bytes") is not None:
+                raw_bytes = image_input["bytes"]
+                storage_tensor = torch.frombuffer(raw_bytes, dtype=torch.uint8)
+                image_tensor = tv_io.decode_image(storage_tensor, mode=tv_io.ImageReadMode.RGB)
+            elif image_input.get("path") is not None:
+                image_path = image_input["path"]
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                 if os.path.exists(image_path):
                     image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
 
-            if image_tensor is None:
-                return {"is_valid": False}
+        elif isinstance(image_input, str):
+            image_path = image_input
+            if not os.path.isabs(image_path):
+                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+            if os.path.exists(image_path):
+                image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
 
-            # Standard Hugging Face vision processors process raw tensors assuming Channels-Last order
-            # to avoid misinterpreting width/height dimensions as color channels.
-            image_tensor = image_tensor.permute(1, 2, 0)
-
-            text = example["text"]
-            message = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": self.prompt}
-                    ]
-                },
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": text}
-                    ]
-                }
-            ]
-
-            text = self.processor.apply_chat_template(
-                message,
-                tokenize=False,
-                add_generation_prompt=True
-            )
-
-            try:
-                # FIX: Restrict both image resolution and total sequence tokens
-                inputs = self.processor(
-                    text=[text],
-                    images=[image_tensor],
-                    padding=False,
-                    truncation=True,
-                    max_length=1024,
-                    min_pixels=256 * 256,
-                    max_pixels=512 * 512,
-                    return_tensors="pt"
-                )
-
-                # Squeeze batch dimension for the dataset map function
-                input_dict = {k: v.squeeze(0) for k, v in inputs.items()}
-                input_dict["is_valid"] = True
-                return input_dict
-
-            except Exception as e:
-                print(f"Skipping corrupt processed example: {e}")
-                return {"is_valid": False}
-
-        except Exception as e:
-            print(f"Failed to process sample: {e}")
+        if image_tensor is None:
             return {"is_valid": False}
+
+        # Standard Hugging Face vision processors process raw tensors assuming Channels-Last order
+        # to avoid misinterpreting width/height dimensions as color channels.
+        image_tensor = image_tensor.permute(1, 2, 0)
+
+        text = example["text"]
+        message = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": self.prompt}
+                ]
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": text}
+                ]
+            }
+        ]
+
+        text = self.processor.apply_chat_template(
+            message,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+
+        inputs = self.processor(
+            text=[text],
+            images=[image_tensor],
+            padding=False,
+            truncation=True,
+            max_length=1024,
+            min_pixels=256 * 256,
+            max_pixels=512 * 512,
+            return_tensors="pt"
+        )
+
+        # Squeeze batch dimension for the dataset map function
+        input_dict = {k: v.squeeze(0) for k, v in inputs.items()}
+        input_dict["is_valid"] = True
+        return input_dict
 
     def train(self):
         self.max_tokens = 2000

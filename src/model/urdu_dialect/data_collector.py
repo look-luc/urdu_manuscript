@@ -35,7 +35,7 @@ class Data_Collector:
         attention_mask = padded_inputs["attention_mask"]
 
         labels = input_ids.clone()
-
+        batch={}
         for i in range(len(features)):
             row_labels = labels[i]
             for row in range(len(row_labels)-len(self.assistant_start_token)+1):
