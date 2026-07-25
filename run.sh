@@ -23,7 +23,6 @@ module load anaconda
 conda activate urdu_manuscript_stable
 
 cd /projects/$USER/urdu_manuscript
-pip install jiwer --quiet
 
 MODEL_TYPE=${1:-text_extraction}
 python -u run.py -o "$MODEL_TYPE"
