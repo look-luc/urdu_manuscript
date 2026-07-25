@@ -1,4 +1,5 @@
 import torch
+from torchvision.transforms import v2
 
 
 class Data_Collector:
@@ -14,25 +15,20 @@ class Data_Collector:
             return {}
 
         # Separates the text tensors from visual features
+
         input_ids_list = [feature["input_ids"] for feature in features]
         attention_mask_list = [feature["attention_mask"] for feature in features]
-
-        # Extracts the visual features safely
-        pixel_values = [feature["pixel_values"] for feature in features]
-        image_grid_thw = [feature["image_grid_thw"] for feature in features]
-
-        # Dynamic Padding
-        padded_inputs = self.processor.tokenizer.pad(
+        padded_text = self.tokenizer.pad(
             {
                 "input_ids": input_ids_list,
                 "attention_mask": attention_mask_list
-            },
-            padding=True,
-            return_tensors="pt"
+            }
         )
 
-        input_ids = padded_inputs["input_ids"]
-        attention_mask = padded_inputs["attention_mask"]
+        # Extracts the visual features safely
+        pixel_values = torch.cat([feature["pixel_values"] for feature in features], dim=0)
+        image_grid_thw = torch.cat([feature["image_grid_thw"] for feature in features], dim=0)
+
 
         labels = input_ids.clone()
         for i in range(len(features)):
@@ -41,11 +37,11 @@ class Data_Collector:
                 if row_labels[row:row+len(self.assistant_start_token)].tolist() == self.assistant_start_token:
                     labels[i, :row+len(self.assistant_start_token)] = -100
                     break
-
+        lables[padded_text["input_ids"] == self.pad_token_id] = -100
         return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
+            "input_ids": padded_text["input_ids"],
+            "attention_mask": padded_text["attention_mask"],
             "labels": labels,
-            "pixel_values": torch.cat(pixel_values, dim=0),
-            "image_grid_thw": torch.cat(image_grid_thw, dim=0)
+            "pixel_values": pixel_values,
+            "image_grid_thw": image_grid_thw
         }

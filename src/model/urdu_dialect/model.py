@@ -169,7 +169,7 @@ class unification_urdu_lang_model:
             },
             {
                 "role": "assistant",
-                "content": [{"type": "text", "text": text}],
+                "content": [{"type": "text", "text": example["text"]}],
             },
         ]
 
@@ -188,7 +188,11 @@ class unification_urdu_lang_model:
             return_tensors="pt",
         )
 
-        input_dict = {k: v.squeeze(0) for k, v in inputs.items()}
+        input_dict = {}
+        input_dict["input_ids"] = inputs["input_ids"].squeeze(0)
+        input_dict["attention_mask"] = inputs["attention_mask"].squeeze(0)
+        input_dict["pixel_values"] = inputs["pixel_values"]
+        input_dict["image_grid_thw"] = inputs["image_grid_thw"]
         input_dict["is_valid"] = True
         return input_dict
 
