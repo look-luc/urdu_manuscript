@@ -6,6 +6,7 @@ import evaluate
 import numpy as np
 import torch
 import torchvision.io as tv_io  # Added for native tensor image decoding
+import torchvision.transforms.functional as F
 from evaluate import load
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
@@ -155,7 +156,7 @@ class unification_urdu_lang_model:
         if image_tensor is None:
             return {"is_valid": False}
 
-        image_tensor = image_tensor.permute(1, 2, 0)
+        image_tensor = F.to_pil_image(image_tensor)
 
         text = example["text"]
         message = [
