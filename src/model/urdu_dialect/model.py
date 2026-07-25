@@ -136,7 +136,7 @@ class unification_urdu_lang_model:
                 raw_bytes = image_input["bytes"]
                 if not self._is_valid_header(raw_bytes):
                     return {"is_valid": False}
-                storage_tensor = torch.frombuffer(raw_bytes, dtype=torch.uint8)
+                storage_tensor = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
                 image_tensor = tv_io.decode_image(storage_tensor, mode=tv_io.ImageReadMode.RGB)
             elif image_input.get("path") is not None:
                 image_path = image_input["path"]
