@@ -35,7 +35,6 @@ class Data_Collector:
         attention_mask = padded_inputs["attention_mask"]
 
         labels = input_ids.clone()
-        batch={}
         for i in range(len(features)):
             row_labels = labels[i]
             for row in range(len(row_labels)-len(self.assistant_start_token)+1):
@@ -43,12 +42,10 @@ class Data_Collector:
                     labels[i, :row+len(self.assistant_start_token)] = -100
                     break
 
-            batch = {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-                "labels": labels,
-                "pixel_values": torch.cat(pixel_values, dim=0),
-                "image_grid_thw": torch.cat(image_grid_thw, dim=0)
-            }
-
-        return batch
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "pixel_values": torch.cat(pixel_values, dim=0),
+            "image_grid_thw": torch.cat(image_grid_thw, dim=0)
+        }

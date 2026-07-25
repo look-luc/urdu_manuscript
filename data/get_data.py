@@ -107,7 +107,7 @@ def get_datasets():
         split='test',
         streaming=True
     ).select_columns(["image", "text"]))
-    kannada_df_test = concatenate_datasets([val, test])
+    kannada_df_test = interleave_datasets([val, test])
 
     test_dataset = interleave_datasets(
         [

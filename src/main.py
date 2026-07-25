@@ -7,7 +7,7 @@ from src.model.text_extraction.model import text_extraction
 from src.model.urdu_dialect.model import unification_urdu_lang_model
 
 load_dotenv()
-os.environ["HF_TOKEN"] = os.getenv("HUGGING_FACE_TOKEN")
+hf_token = os.getenv("HF_TOKEN")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 

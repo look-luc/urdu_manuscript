@@ -11,7 +11,6 @@ from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoProcessor,
-    BitsAndBytesConfig,
     Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainingArguments,
@@ -37,9 +36,9 @@ class unification_urdu_lang_model:
             You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.
             Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
-        """
+        """,
+        batch_size:int = 64
     )->None:
-        torch.backends.cudnn.enabled = False
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.model_id=model_id
@@ -47,19 +46,30 @@ class unification_urdu_lang_model:
 
         self.prompt = prompt
 
+        self.batch_size = batch_size
+
     def _compute_metrics(self, eval_pred):
-        logits, label_ids = eval_pred.predictions
+        logits = eval_pred.predictions
+        label_ids = eval_pred.label_ids
         if isinstance(logits, tuple):
             logits = logits[0]
 
         pred_ids = np.argmax(logits, axis=-1)
 
-        decoded_preds = self.processor.tokenizer.batch_decode(pred_ids, skip_special_tokens=True)
-
         clean_label_ids = np.where(
             label_ids != -100,
             label_ids,
             self.processor.tokenizer.pad_token_id
+        )
+        clean_pred_ids = np.where(
+            label_ids != -100,
+            pred_ids,
+            self.processor.tokenizer.pad_token_id
+        )
+
+        decoded_preds = self.processor.tokenizer.batch_decode(
+            clean_pred_ids,
+            skip_special_tokens=True
         )
         decoded_labels = self.processor.tokenizer.batch_decode(
             clean_label_ids,
@@ -147,7 +157,7 @@ class unification_urdu_lang_model:
         text = self.processor.apply_chat_template(
             message,
             tokenize=False,
-            add_generation_prompt=True
+            add_generation_prompt=False
         )
 
         inputs = self.processor(
@@ -178,16 +188,15 @@ class unification_urdu_lang_model:
 
         data_collector = Data_Collector(processor=self.processor)
 
-        peft_config = LoraConfig(
+        peft_config = create_lora_config(
             r=16,
             lora_alpha=32,
             target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-            lora_dropout=0.05,
-            bias="none",
-            task_type="CAUSAL_LM"
+            task_type="casual_lm"
         )
 
-        self.model = get_peft_model(self.model, peft_config) #type: ignore
+        self.model = get_peft_model(self.model, peft_config)
+        self.model.enable_input_require_grads()
 
         training_args = TrainingArguments(
             output_dir="./results",

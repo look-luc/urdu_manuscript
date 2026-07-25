@@ -14,4 +14,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(f"running {args.override}\n\n")
-    print(run_model(args.override))
+    run_model(args.override)
