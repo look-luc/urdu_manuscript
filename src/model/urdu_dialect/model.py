@@ -106,7 +106,7 @@ class unification_urdu_lang_model:
 
         return  model, processor, data
 
-    def _is_valid_header(bytes_data):
+    def _is_valid_header(self, bytes_data):
         if len(bytes_data) < 4:
             return False
         if bytes_data[0] == 0xFF and bytes_data[1] == 0xD8 and bytes_data[2] == 0xFF:
@@ -115,20 +115,22 @@ class unification_urdu_lang_model:
             return True
         return False
 
-    def _is_valid_file(path: str) -> bool:
-        if not os.path.exists(path):
-            return False
+    def _is_valid_file(self, path: str) -> bool:
         try:
-            with open(path, "rb") as f:
-                header = f.read(4)
-            return unification_urdu_lang_model._is_valid_header(header)
+            if not os.path.exists(path):
+                return False
+            try:
+                with open(path, "rb") as f:
+                    header = f.read(4)
+                return self._is_valid_header(header)
+            except Exception:
+                return False
         except Exception:
             return False
 
     def _process(self, example):
         image_input = example["image"]
         image_tensor = None
-
         if isinstance(image_input, dict):
             if image_input.get("bytes") is not None:
                 raw_bytes = image_input["bytes"]
@@ -183,7 +185,7 @@ class unification_urdu_lang_model:
             min_pixels=256 * 256,
             max_pixels=512 * 512,
             return_tensors="pt",
-        ).to(self.device)
+        )
 
         input_dict = {k: v.squeeze(0) for k, v in inputs.items()}
         input_dict["is_valid"] = True
