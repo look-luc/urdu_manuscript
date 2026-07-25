@@ -99,6 +99,7 @@ class unification_urdu_lang_model:
     def _setup (self):
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
+            torch_dtype=torch.bfloat16,
             torch_dtype="auto",
         )
         processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
@@ -226,7 +227,7 @@ class unification_urdu_lang_model:
             eval_accumulation_steps=1,
             gradient_accumulation_steps=4,
             bf16=True,
-            optim="adamw_torch_fused",
+            optim="adamw_torch",
             remove_unused_columns=False,
             learning_rate=2e-5,
             logging_steps=10,

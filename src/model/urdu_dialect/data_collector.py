@@ -15,10 +15,9 @@ class Data_Collector:
             return {}
 
         # Separates the text tensors from visual features
-
         input_ids_list = [feature["input_ids"] for feature in features]
         attention_mask_list = [feature["attention_mask"] for feature in features]
-        padded_text = self.processor.pad(
+        padded_text = self.processor.tokenizer.pad(
             {
                 "input_ids": input_ids_list,
                 "attention_mask": attention_mask_list
@@ -32,14 +31,14 @@ class Data_Collector:
         image_grid_thw = torch.cat([feature["image_grid_thw"] for feature in features], dim=0)
 
 
-        labels = input_ids.clone()
+        labels = padded_text["input_ids"].clone()
         for i in range(len(features)):
             row_labels = labels[i]
             for row in range(len(row_labels)-len(self.assistant_start_token)+1):
                 if row_labels[row:row+len(self.assistant_start_token)].tolist() == self.assistant_start_token:
                     labels[i, :row+len(self.assistant_start_token)] = -100
                     break
-        lables[padded_text["input_ids"] == self.pad_token_id] = -100
+        labels[padded_text["input_ids"] == self.pad_token_id] = -100
         return {
             "input_ids": padded_text["input_ids"],
             "attention_mask": padded_text["attention_mask"],
