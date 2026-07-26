@@ -5,7 +5,7 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-import torchvision.io as tv_io  # Added for native tensor image decoding
+import torchvision.io as tv_io
 import torchvision.transforms.functional as F
 from evaluate import load
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
@@ -30,24 +30,24 @@ cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 f1_metric = load("f1")
 
+
 class unification_urdu_lang_model:
     def __init__(
         self,
-        model_id:str="Qwen/Qwen2.5-VL-7B-Instruct",
-        prompt:str="""
+        model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+        prompt: str = """
             You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.
             Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
         """,
-        batch_size:int = 64
-    )->None:
+        batch_size: int = 64,
+    ) -> None:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
-        self.model_id=model_id
+        self.model_id = model_id
         self.model, self.processor, self.data = self._setup()
 
         self.prompt = prompt
-
         self.batch_size = batch_size
 
     def _compute_metrics(self, eval_pred):
@@ -59,30 +59,32 @@ class unification_urdu_lang_model:
         pred_ids = np.argmax(logits, axis=-1)
 
         clean_label_ids = np.where(
-            label_ids != -100,
-            label_ids,
-            self.processor.tokenizer.pad_token_id
+            label_ids != -100, label_ids, self.processor.tokenizer.pad_token_id
         )
         clean_pred_ids = np.where(
-            label_ids != -100,
-            pred_ids,
-            self.processor.tokenizer.pad_token_id
+            label_ids != -100, pred_ids, self.processor.tokenizer.pad_token_id
         )
 
         decoded_preds = self.processor.tokenizer.batch_decode(
-            clean_pred_ids,
-            skip_special_tokens=True
+            clean_pred_ids, skip_special_tokens=True
         )
         decoded_labels = self.processor.tokenizer.batch_decode(
-            clean_label_ids,
-            skip_special_tokens=True
+            clean_label_ids, skip_special_tokens=True
         )
 
-        decoded_preds = [pred.strip() if pred.strip() else " " for pred in decoded_preds]
-        decoded_labels = [label.strip() if label.strip() else " " for label in decoded_labels]
+        decoded_preds = [
+            pred.strip() if pred.strip() else " " for pred in decoded_preds
+        ]
+        decoded_labels = [
+            label.strip() if label.strip() else " " for label in decoded_labels
+        ]
 
-        cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
-        wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
+        cer_score = cer_metric.compute(
+            predictions=decoded_preds, references=decoded_labels
+        )
+        wer_score = wer_metric.compute(
+            predictions=decoded_preds, references=decoded_labels
+        )
 
         bleu_targets = [[label] for label in decoded_labels]
 
@@ -91,11 +93,7 @@ class unification_urdu_lang_model:
         except Exception:
             bleu_score_val = 0.0
 
-        return {
-            "CER": cer_score,
-            "WER": wer_score,
-            "BLEU": bleu_score_val
-        }
+        return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
         if self.device != "cuda":
@@ -145,7 +143,12 @@ class unification_urdu_lang_model:
             return False
         if bytes_data[0] == 0xFF and bytes_data[1] == 0xD8 and bytes_data[2] == 0xFF:
             return True
-        elif bytes_data[0] == 0x89 and bytes_data[1] == 0x50 and bytes_data[2] == 0x4E and bytes_data[3] == 0x47:
+        elif (
+            bytes_data[0] == 0x89
+            and bytes_data[1] == 0x50
+            and bytes_data[2] == 0x4E
+            and bytes_data[3] == 0x47
+        ):
             return True
         return False
 
@@ -170,21 +173,29 @@ class unification_urdu_lang_model:
                 raw_bytes = image_input["bytes"]
                 if not self._is_valid_header(raw_bytes):
                     return {"is_valid": False}
-                storage_tensor = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
-                image_tensor = tv_io.decode_image(storage_tensor, mode=tv_io.ImageReadMode.RGB)
+                storage_tensor = torch.frombuffer(
+                    bytearray(raw_bytes), dtype=torch.uint8
+                )
+                image_tensor = tv_io.decode_image(
+                    storage_tensor, mode=tv_io.ImageReadMode.RGB
+                )
             elif image_input.get("path") is not None:
                 image_path = image_input["path"]
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                 if self._is_valid_file(image_path):
-                    image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
+                    image_tensor = tv_io.read_image(
+                        image_path, mode=tv_io.ImageReadMode.RGB
+                    )
 
         elif isinstance(image_input, str):
             image_path = image_input
             if not os.path.isabs(image_path):
                 image_path = os.path.join(IMAGE_BASE_DIR, image_path)
             if self._is_valid_file(image_path):
-                image_tensor = tv_io.read_image(image_path, mode=tv_io.ImageReadMode.RGB)
+                image_tensor = tv_io.read_image(
+                    image_path, mode=tv_io.ImageReadMode.RGB
+                )
 
         if image_tensor is None:
             return {"is_valid": False}
@@ -235,14 +246,16 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        # Filter out invalid rows using the returned boolean dictionary flag
-        processed_train = train_dataset.map(self._process).filter(lambda example: example.get("is_valid", False))
-        processed_test = test_dataset.map(self._process).filter(lambda x: x.get("is_valid", False))
+        processed_train = train_dataset.map(self._process).filter(
+            lambda example: example.get("is_valid", False)
+        )
+        processed_test = test_dataset.map(self._process).filter(
+            lambda x: x.get("is_valid", False)
+        )
 
         data_collector = Data_Collector(processor=self.processor)
 
         self.model.enable_input_require_grads()
-
         self.model.gradient_checkpointing_enable()
 
         training_args = TrainingArguments(
@@ -266,7 +279,7 @@ class unification_urdu_lang_model:
             dataloader_pin_memory=False,
             accelerator_config={
                 "dispatch_batches": False,
-                "split_batches": False
+                "split_batches": False,
             },
         )
 
