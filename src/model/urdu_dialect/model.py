@@ -8,10 +8,11 @@ import torch
 import torchvision.io as tv_io  # Added for native tensor image decoding
 import torchvision.transforms.functional as F
 from evaluate import load
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoProcessor,
+    BitsAndBytesConfig,
     Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainingArguments,
@@ -97,11 +98,36 @@ class unification_urdu_lang_model:
         }
 
     def _setup (self):
-        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            self.model_id,
-            torch_dtype=torch.bfloat16,
-            torch_dtype="auto",
+        if self.device != "cuda":
+            raise ValueError("CUDA device not detected")
+        torch.cuda.empty_cache()
+        is_quantized = False
+        try:
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                self.model_id,
+                torch_dtype=torch.bfloat16,
+            )
+        except:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",          # Optimized data type for normal distributions
+                bnb_4bit_compute_dtype=torch.float16 # Speeds up intermediate computations
+            )
+            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+                self.model_id,
+                quantization_config=bnb_config,
+            )
+            is_quantized = True
+        if is_quantized:
+            model = prepare_model_for_kbit_training(model)
+        peft_config = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+            task_type="CAUSAL_LM"
         )
+
+        model = get_peft_model(model, peft_config)
         processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
 
         data = get_datasets()
@@ -209,15 +235,9 @@ class unification_urdu_lang_model:
 
         data_collector = Data_Collector(processor=self.processor)
 
-        peft_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
-            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-            task_type="CAUSAL_LM"
-        )
-
-        self.model = get_peft_model(self.model, peft_config)
         self.model.enable_input_require_grads()
+
+        self.model.gradient_checkpointing_enable()
 
         training_args = TrainingArguments(
             output_dir="./results",
