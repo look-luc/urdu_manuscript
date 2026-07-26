@@ -97,7 +97,7 @@ class unification_urdu_lang_model:
             "BLEU": bleu_score_val
         }
 
-    def _setup (self):
+    def _setup(self):
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
         torch.cuda.empty_cache()
@@ -107,32 +107,38 @@ class unification_urdu_lang_model:
                 self.model_id,
                 torch_dtype=torch.bfloat16,
             )
-        except:
+        except Exception:
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",          # Optimized data type for normal distributions
-                bnb_4bit_compute_dtype=torch.float16 # Speeds up intermediate computations
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
             )
+            # Added device_map="auto" specifically for bitsandbytes quantization
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 self.model_id,
                 quantization_config=bnb_config,
+                device_map="auto",
             )
             is_quantized = True
+
         if is_quantized:
             model = prepare_model_for_kbit_training(model)
+
         peft_config = LoraConfig(
             r=16,
             lora_alpha=32,
             target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-            task_type="CAUSAL_LM"
+            task_type="CAUSAL_LM",
         )
 
         model = get_peft_model(model, peft_config)
-        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
+        processor = AutoProcessor.from_pretrained(
+            self.model_id, min_pixels=256 * 256, max_pixels=512 * 512
+        )
 
         data = get_datasets()
 
-        return  model, processor, data
+        return model, processor, data
 
     def _is_valid_header(self, bytes_data):
         if len(bytes_data) < 4:
