@@ -95,7 +95,7 @@ class unification_urdu_lang_model:
 
         return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
-    def _setup(self):
+     def _setup(self):
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
         torch.cuda.empty_cache()
@@ -105,13 +105,15 @@ class unification_urdu_lang_model:
                 self.model_id,
                 torch_dtype=torch.bfloat16,
             )
-        except Exception:
+        except Exception as e:
+            torch.cuda.empty_cache()
+            gc.collect()
+
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
                 bnb_4bit_compute_dtype=torch.float16,
             )
-            # Added device_map="auto" specifically for bitsandbytes quantization
             model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
                 self.model_id,
                 quantization_config=bnb_config,
@@ -130,8 +132,9 @@ class unification_urdu_lang_model:
         )
 
         model = get_peft_model(model, peft_config)
+
         processor = AutoProcessor.from_pretrained(
-            self.model_id, min_pixels=256 * 256, max_pixels=512 * 512
+            self.model_id, min_pixels=128 * 128, max_pixels=256 * 256
         )
 
         data = get_datasets()
