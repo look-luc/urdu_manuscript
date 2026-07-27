@@ -226,9 +226,9 @@ class unification_urdu_lang_model:
             images=[image_tensor],
             padding=False,
             truncation=True,
-            max_length=1024,
-            min_pixels=256 * 256,
-            max_pixels=512 * 512,
+            max_length=512,
+            min_pixels = 128 * 128,
+            max_pixels = 256 * 256,
             return_tensors="pt",
         )
 
@@ -264,7 +264,7 @@ class unification_urdu_lang_model:
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
             eval_accumulation_steps=1,
-            gradient_accumulation_steps=4,
+            gradient_accumulation_steps=16,
             bf16=True,
             optim="adamw_torch",
             remove_unused_columns=False,
