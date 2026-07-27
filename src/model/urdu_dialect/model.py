@@ -117,7 +117,7 @@ class unification_urdu_lang_model:
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
             quantization_config=bnb_config,
-            device_map="auto",
+            device_map={"": 0},
         )
         is_quantized = True
 

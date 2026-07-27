@@ -43,6 +43,6 @@ class Data_Collector:
             "input_ids": padded_text["input_ids"],
             "attention_mask": padded_text["attention_mask"],
             "labels": labels,
-            "pixel_values": pixel_values,
+            "pixel_values": pixel_values.bfloat16(),
             "image_grid_thw": image_grid_thw
         }
