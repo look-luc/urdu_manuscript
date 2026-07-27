@@ -95,31 +95,31 @@ class unification_urdu_lang_model:
 
         return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
-     def _setup(self):
+    def _setup(self):
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
-        torch.cuda.empty_cache()
-        is_quantized = False
-        try:
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                self.model_id,
-                torch_dtype=torch.bfloat16,
-            )
-        except Exception as e:
-            torch.cuda.empty_cache()
-            gc.collect()
 
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float16,
-            )
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                self.model_id,
-                quantization_config=bnb_config,
-                device_map="auto",
-            )
-            is_quantized = True
+        torch.cuda.empty_cache()
+
+        is_quantized = False
+
+        torch.cuda.empty_cache()
+        gc.collect()
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.float16,
+        )
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            self.model_id,
+            quantization_config=bnb_config,
+            device_map="auto",
+        )
+        is_quantized = True
 
         if is_quantized:
             model = prepare_model_for_kbit_training(model)
