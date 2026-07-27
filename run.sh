@@ -15,6 +15,7 @@ export HF_TOKEN="${HF_TOKEN}"
 export HF_HOME="/projects/$USER/.cache/huggingface"
 export EVALUATE_CACHE_DIR="/projects/$USER/.cache/evaluate"
 export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
 

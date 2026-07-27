@@ -111,7 +111,7 @@ class unification_urdu_lang_model:
             self.model_id,
             quantization_config=bnb_config,
             device_map={"": 0},
-            attn_implementation="flash_attention_2",
+            attn_implementation="sdpa",
         )
 
         model = prepare_model_for_kbit_training(model)
@@ -221,9 +221,8 @@ class unification_urdu_lang_model:
             images=[image_tensor],
             padding=False,
             truncation=True,
-            max_length=512,
-            min_pixels = 128 * 128,
-            max_pixels = 256 * 256,
+            max_length=384,
+            max_pixels = 192 * 192,
             return_tensors="pt",
         )
 
@@ -281,6 +280,9 @@ class unification_urdu_lang_model:
                 "dispatch_batches": False,
                 "split_batches": False,
             },
+            gradient_checkpointing_kwargs={
+                "use_reentrant": False
+            }
         )
 
         trainer = Trainer(
@@ -289,7 +291,7 @@ class unification_urdu_lang_model:
             train_dataset=processed_train,
             eval_dataset=processed_test,
             data_collator=data_collector,
-            preprocess_logits_fn=self._preprocess_eval_logits,
+            preprocess_logits_for_metrics=self._preprocess_eval_logits,
             compute_metrics=self._compute_metrics,
         )
 
