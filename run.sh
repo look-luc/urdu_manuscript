@@ -15,9 +15,6 @@ export HF_TOKEN="${HF_TOKEN}"
 export HF_HOME="/projects/$USER/.cache/huggingface"
 export EVALUATE_CACHE_DIR="/projects/$USER/.cache/evaluate"
 export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
-export TORCH_CUDNN_V8_API_ENABLED=1
-export CUDNN_LOGINFO_DBG=1
-export CUDA_LAUNCH_BLOCKING=1
 
 mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
 

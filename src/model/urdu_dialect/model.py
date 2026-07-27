@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 from pathlib import Path
@@ -97,7 +98,6 @@ class unification_urdu_lang_model:
 
     def _setup(self):
         torch.backends.cudnn.benchmark = False
-        torch.backends.cudnn.deterministic = True
 
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
@@ -112,7 +112,7 @@ class unification_urdu_lang_model:
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_compute_dtype=torch.bfloat16,
         )
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
