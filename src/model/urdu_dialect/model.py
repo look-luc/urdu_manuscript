@@ -52,18 +52,14 @@ class unification_urdu_lang_model:
         self.batch_size = batch_size
 
     def _compute_metrics(self, eval_pred):
-        logits = eval_pred.predictions
+        pred_ids = eval_pred.predictions
         label_ids = eval_pred.label_ids
-        if isinstance(logits, tuple):
-            logits = logits[0]
-
-        pred_ids = np.argmax(logits, axis=-1)
 
         clean_label_ids = np.where(
             label_ids != -100, label_ids, self.processor.tokenizer.pad_token_id
         )
         clean_pred_ids = np.where(
-            label_ids != -100, pred_ids, self.processor.tokenizer.pad_token_id
+            pred_ids != -100, pred_ids, self.processor.tokenizer.pad_token_id
         )
 
         decoded_preds = self.processor.tokenizer.batch_decode(
@@ -115,7 +111,7 @@ class unification_urdu_lang_model:
             self.model_id,
             quantization_config=bnb_config,
             device_map={"": 0},
-            attn_implementation="sdpa",
+            attn_implementation="flash_attention_2",
         )
 
         model = prepare_model_for_kbit_training(model)
@@ -239,6 +235,11 @@ class unification_urdu_lang_model:
         input_dict["is_valid"] = True
         return input_dict
 
+    def _preprocess_eval_logits(self, logits, labels):
+        if isinstance(logits, tuple):
+            logits = logits[0]
+        return torch.argmax(logits, dim=-1)
+
     def train(self):
         self.max_tokens = 2000
 
@@ -288,6 +289,7 @@ class unification_urdu_lang_model:
             train_dataset=processed_train,
             eval_dataset=processed_test,
             data_collator=data_collector,
+            preprocess_logits_fn=self._preprocess_eval_logits,
             compute_metrics=self._compute_metrics,
         )
 
