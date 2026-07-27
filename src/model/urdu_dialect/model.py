@@ -97,14 +97,11 @@ class unification_urdu_lang_model:
         return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
+        torch.backends.cudnn.enabled = False
         torch.backends.cudnn.benchmark = False
 
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
-
-        torch.cuda.empty_cache()
-
-        is_quantized = False
 
         torch.cuda.empty_cache()
         gc.collect()
@@ -118,11 +115,10 @@ class unification_urdu_lang_model:
             self.model_id,
             quantization_config=bnb_config,
             device_map={"": 0},
+            attn_implementation="sdpa",
         )
-        is_quantized = True
 
-        if is_quantized:
-            model = prepare_model_for_kbit_training(model)
+        model = prepare_model_for_kbit_training(model)
 
         peft_config = LoraConfig(
             r=16,
@@ -269,7 +265,7 @@ class unification_urdu_lang_model:
             eval_accumulation_steps=1,
             gradient_accumulation_steps=16,
             bf16=True,
-            optim="adamw_torch",
+            optim="paged_adamw_8bit",
             remove_unused_columns=False,
             learning_rate=2e-5,
             logging_steps=10,
