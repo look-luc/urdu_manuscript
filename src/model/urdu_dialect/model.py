@@ -222,7 +222,8 @@ class unification_urdu_lang_model:
             padding=False,
             truncation=True,
             max_length=384,
-            max_pixels = 192 * 192,
+            min_pixels = 128 * 128,
+            max_pixels = 200 * 200,
             return_tensors="pt",
         )
 
@@ -258,22 +259,24 @@ class unification_urdu_lang_model:
         self.model.gradient_checkpointing_enable()
 
         training_args = TrainingArguments(
+            dataloader_num_workers=2,
+            dataloader_pin_memory=True,
             output_dir="./results",
             ignore_data_skip=True,
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
             eval_accumulation_steps=1,
-            gradient_accumulation_steps=16,
+            gradient_accumulation_steps=8,
             bf16=True,
             optim="paged_adamw_8bit",
             remove_unused_columns=False,
             learning_rate=2e-5,
             logging_steps=10,
-            max_steps=5000,
+            max_steps=2000,
             eval_strategy="steps",
-            eval_steps=100,
+            eval_steps=250,
             save_strategy="steps",
-            save_steps=200,
+            save_steps=250,
             dataloader_num_workers=0,
             dataloader_pin_memory=False,
             accelerator_config={
