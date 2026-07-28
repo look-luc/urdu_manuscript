@@ -26,18 +26,22 @@ def _build_df(json_path: Path):
         if not isinstance(element, dict):
             continue
 
+        step = element.get("step")
+        if step is None:
+            continue
+
         if "loss" in element:
-            train_loss["step"] = element["loss"]
+            train_loss[step] = element["loss"]
         if "grad_norm" in element:
-            grad_norm["step"] = element["grad_norm"]
+            grad_norm[step] = element["grad_norm"]
         if "eval_loss" in element:
-            eval_loss["step"] = element["eval_loss"]
+            eval_loss[step] = element["eval_loss"]
         if "eval_BLEU" in element:
-            eval_bleu["step"] = element["eval_BLEU"]
+            eval_bleu[step] = element["eval_BLEU"]
         if "eval_CER" in element:
-            eval_cer["step"] = element["eval_CER"]
+            eval_cer[step] = element["eval_CER"]
         if "eval_WER" in element:
-            eval_wer["step"] = element["eval_WER"]
+            eval_wer[step] = element["eval_WER"]
 
     return train_loss, grad_norm, eval_loss, eval_bleu, eval_cer, eval_wer
 
@@ -46,8 +50,8 @@ def _make_graph(metric: dict[str, float], metric_name: str, color: str, output_d
         print(f"Skipping graph for {metric_name}: No log data found.")
         return
 
-    x = torch.tensor(list(metric.keys())).numpy()
-    y = torch.tensor(list(metric.values())).numpy()
+    x = torch.tensor([float(k) for k in metric.keys()]).numpy()
+    y = torch.tensor([float(v) for v in metric.values()]).numpy()
 
     fig, ax = plt.subplots()
     ax.plot(x, y, marker='o', color=color, label=metric_name.capitalize())
