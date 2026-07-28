@@ -15,10 +15,10 @@ def _build_df(json_path: Path):
     eval_cer = {}
     eval_wer = {}
 
-    temp_df = pd.read_json(json_path)
+    temp_df = pd.read_json(json_path, typ="series")
 
-    if "log_history" in temp_df.columns:
-        log_entries = temp_df["log_history"].dropna().values
+    if "log_history" in temp_df and isinstance(temp_df["log_history"], list):
+        log_entries = temp_df["log_history"]
     else:
         log_entries = []
 
@@ -68,12 +68,19 @@ def _make_graph(metric: dict[str, float], metric_name: str, color: str, output_d
 
 def metrics_graph(path_to_results: str = str(BASE_DIR / "results" / "log")):
     results_dir = Path(path_to_results)
-    graphs_dir = results_dir / "graphs"
+
+    if results_dir.name == "graphs":
+        graphs_dir = results_dir
+        search_dir = results_dir.parent
+    else:
+        graphs_dir = results_dir / "graphs"
+        search_dir = results_dir
+
     graphs_dir.mkdir(parents=True, exist_ok=True)
 
-    json_files = list(results_dir.rglob("*.json"))
+    json_files = [p for p in search_dir.rglob("*.json") if "graphs" not in p.parts]
     if not json_files:
-        raise FileNotFoundError(f"No .json log files found under directory: {results_dir}")
+        raise FileNotFoundError(f"No .json log files found under directory: {search_dir}")
 
     result_json_path = json_files[0]
 
