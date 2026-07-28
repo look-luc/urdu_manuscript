@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.model.text_extraction.model import text_extraction
+from src.model.urdu_dialect.graphs import metrics_graph
 from src.model.urdu_dialect.model import unification_urdu_lang_model
 
 load_dotenv()
@@ -39,5 +40,7 @@ def run_model(what_model:str):
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / "model_out.txt", "w", encoding="utf-8") as file:
             file.write(save_status)
+    elif what_model == "graph":
+        metrics_graph()
     else:
         raise ValueError(f"{what_model} is not a valid model run type.")

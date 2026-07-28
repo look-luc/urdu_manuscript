@@ -30,4 +30,5 @@ export LD_LIBRARY_PATH="$SITE_PKG/nvidia/cudnn/lib:$SITE_PKG/nvidia/cublas/lib:$
 cd /projects/$USER/urdu_manuscript
 
 MODEL_TYPE=${1:-text_extraction}
-python -u run.py -o "$MODEL_TYPE"
+RUN_TYPE=${2:-train}
+python -u run.py -m "$MODEL_TYPE"

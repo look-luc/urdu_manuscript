@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
-import torch
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -15,7 +15,7 @@ def _build_df(json:str):
     eval_cer = {}
     eval_wer = {}
 
-    temp_df = pd.read_json(json, lines=True)
+    temp_df = pd.read_json(json)
 
     for element in temp_df["log_history"].values():
         if "loss" in element.keys():
@@ -28,7 +28,7 @@ def _build_df(json:str):
             eval_wer[element["step"]] = element["eval_WER"]
     return train_loss, grad_norm, eval_loss, eval_bleu, eval_cer, eval_wer
 
-def _make_graph(metric:dict[str:float], metric_name:str, color:str, path=""):
+def _make_graph(metric:dict[str,float], metric_name:str, color:str, path=""):
     x = torch.tensor(list(metric.keys())).numpy()
     y = torch.tensor(list(metric.values())).numpy()
     plt.plot(x, y, marker='o', color=color, label=metric_name.capitalize())
@@ -50,7 +50,7 @@ def metrics_graph(path_to_results:str=f"{BASE_DIR}/results/log"):
     path = Path(f"{path_to_results}/graphs")
     path.mkdir(parents=True, exist_ok=True)
 
-    result_jsonl = str(path_to_results.rglob("*.jsonl"))
+    result_jsonl = str(path_to_results.rglob("*.json"))
 
     train_loss, grad_norm, eval_loss, eval_bleu, eval_cer, eval_wer = _build_df(result_jsonl)
 
@@ -58,3 +58,4 @@ def metrics_graph(path_to_results:str=f"{BASE_DIR}/results/log"):
     metric_names = ["training loss", "gradient normalization", "evaluation loss", "BLEU score", "CER score", "WER score"]
     colors = ['#0072B2', '#E69F00', '#009E73', '#F0E442', '#D55E00', '#CC79A7']
     for metric, name, color in zip(metrics, metric_names, colors):
+        _make_graph(metric, name, color)
