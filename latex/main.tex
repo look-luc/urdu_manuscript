@@ -1,0 +1,44 @@
+\documentclass[12pt]{article}
+\usepackage[letterpaper, margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amssymb}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{setspace}
+\usepackage{graphicx}
+
+\graphicspath{{../results/log/graphs}}
+
+\begin{document}
+    \singlespacing
+    \setlength{\parindent}{36pt}
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.65\linewidth]{BLEU_score.png}
+    \end{figure}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.65\linewidth]{CER_score.png}
+    \end{figure}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.65\linewidth]{evaluation_loss.png}
+    \end{figure}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.65\linewidth]{gradient_normalization.png}
+    \end{figure}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.65\linewidth]{training_loss.png}
+    \end{figure}
+
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=0.65\linewidth]{WER_score.png}
+    \end{figure}
+\end{document}
