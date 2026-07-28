@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 
-def _build_df(json:str):
+def _build_df(json_path: Path):
     train_loss = {}
     grad_norm = {}
     eval_loss = {}
@@ -15,47 +15,76 @@ def _build_df(json:str):
     eval_cer = {}
     eval_wer = {}
 
-    temp_df = pd.read_json(json)
+    temp_df = pd.read_json(json_path)
 
-    for element in temp_df["log_history"].values():
-        if "loss" in element.keys():
-            train_loss[element["step"]] = element["loss"]
-            grad_norm[element["step"]] = element["grad_norm"]
-        if "eval_loss" in element.keys():
-            eval_loss[element["step"]] = element["eval_loss"]
-            eval_bleu[element["step"]] = element["eval_BLEU"]
-            eval_cer[element["step"]] = element["eval_CER"]
-            eval_wer[element["step"]] = element["eval_WER"]
+    if "log_history" in temp_df.columns:
+        log_entries = temp_df["log_history"].dropna().values
+    else:
+        log_entries = []
+
+    for element in log_entries:
+        if not isinstance(element, dict):
+            continue
+
+        if "loss" in element:
+            train_loss["step"] = element["loss"]
+        if "grad_norm" in element:
+            grad_norm["step"] = element["grad_norm"]
+        if "eval_loss" in element:
+            eval_loss["step"] = element["eval_loss"]
+        if "eval_BLEU" in element:
+            eval_bleu["step"] = element["eval_BLEU"]
+        if "eval_CER" in element:
+            eval_cer["step"] = element["eval_CER"]
+        if "eval_WER" in element:
+            eval_wer["step"] = element["eval_WER"]
+
     return train_loss, grad_norm, eval_loss, eval_bleu, eval_cer, eval_wer
 
-def _make_graph(metric:dict[str,float], metric_name:str, color:str, path=""):
+def _make_graph(metric: dict[str, float], metric_name: str, color: str, output_dir: Path):
+    if not metric:
+        print(f"Skipping graph for {metric_name}: No log data found.")
+        return
+
     x = torch.tensor(list(metric.keys())).numpy()
     y = torch.tensor(list(metric.values())).numpy()
-    plt.plot(x, y, marker='o', color=color, label=metric_name.capitalize())
 
-    plt.title(f'{metric_name.capitalize()} Over Epochs')
+    fig, ax = plt.subplots()
+    ax.plot(x, y, marker='o', color=color, label=metric_name.capitalize())
 
-    plt.xlabel('Epochs')
-    plt.ylabel(metric_name.capitalize())
+    ax.set_title(f'{metric_name.capitalize()} Over Steps')
+    ax.set_xlabel('Steps')
+    ax.set_ylabel(metric_name.capitalize())
 
-    plt.legend()
-    plt.grid(True)
+    ax.legend()
+    ax.grid(True)
 
     file_name = metric_name.replace(" ", "_")
-    plt.savefig(f"{BASE_DIR}/results/graphs/{file_name}.png")
+    save_path = output_dir / f"{file_name}.png"
+    fig.savefig(save_path)
+    plt.close(fig)
 
-    print(f"made graph of {metric_name} as {file_name}.png at {BASE_DIR}/results/graphs")
+    print(f"Made graph of {metric_name} as {file_name}.png at {output_dir}")
 
-def metrics_graph(path_to_results:str=f"{BASE_DIR}/results/log"):
-    path = Path(f"{path_to_results}/graphs")
-    path.mkdir(parents=True, exist_ok=True)
+def metrics_graph(path_to_results: str = str(BASE_DIR / "results" / "log")):
+    results_dir = Path(path_to_results)
+    graphs_dir = results_dir / "graphs"
+    graphs_dir.mkdir(parents=True, exist_ok=True)
 
-    result_jsonl = str(path_to_results.rglob("*.json"))
+    json_files = list(results_dir.rglob("*.json"))
+    if not json_files:
+        raise FileNotFoundError(f"No .json log files found under directory: {results_dir}")
 
-    train_loss, grad_norm, eval_loss, eval_bleu, eval_cer, eval_wer = _build_df(result_jsonl)
+    result_json_path = json_files[0]
 
-    metrics = [train_loss, grad_norm, eval_loss, eval_bleu, eval_cer, eval_wer]
-    metric_names = ["training loss", "gradient normalization", "evaluation loss", "BLEU score", "CER score", "WER score"]
+    metrics = _build_df(result_json_path)
+    metric_names = [
+        "training loss", "gradient normalization", "evaluation loss",
+        "BLEU score", "CER score", "WER score"
+    ]
     colors = ['#0072B2', '#E69F00', '#009E73', '#F0E442', '#D55E00', '#CC79A7']
+
     for metric, name, color in zip(metrics, metric_names, colors):
-        _make_graph(metric, name, color)
+        _make_graph(metric, name, color, graphs_dir)
+
+    print("Finished graphing metrics.")
