@@ -1,11 +1,8 @@
 from pathlib import Path
 
-import pandas as pd
 import torch
-from peft import PeftModel, get_peft_model
-from qwen_vl_utils import process_vision_info
-from safetensors import safe_open
-from torchvision import io
+import torchvision.io as tv_io
+from peft import PeftModel
 from torchvision.transforms.functional import to_pil_image
 from transformers import (
     AutoProcessor,
@@ -45,4 +42,28 @@ class text_extraction:
 
     def extract(self, image_path: str):
         self.model.eval()
+        image_tensor = tv_io.read_image(
+            image_path, mode=tv_io.ImageReadMode.RGB
+        )
+        image_tensor = to_pil_image(image_tensor)
+
+        inputs = self.processor(
+            image=image_tensor,
+            text=self.prompt,
+            return_tensors = "pt"
+        ).to(self.device)
+
         with torch.no_grad():
+            ids = self.model.generate(**inputs, max_new_tokens=2000)
+
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, ids)
+        ]
+
+        decoded_output = self.processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False
+        )
+
+        return decoded_output
