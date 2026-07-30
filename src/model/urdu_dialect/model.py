@@ -257,18 +257,21 @@ class unification_urdu_lang_model:
             lambda x: x.get("is_valid") is True
         )
 
-        if len(processed_train) == 0:
+        try:
+            next(iter(processed_train))
+            print("Successfully verified active stream for processed_train.")
+        except StopIteration:
             raise ValueError(
-                "processed_train contains 0 valid samples. Check IMAGE_BASE_DIR path resolution or header validation."
-            )
-        if len(processed_test) == 0:
-            raise ValueError(
-                "processed_test contains 0 valid samples. Check IMAGE_BASE_DIR path resolution or header validation."
+                "processed_train iterator is empty! Check IMAGE_BASE_DIR or image headers."
             )
 
-        print(
-            f"Successfully processed {len(processed_train)} train samples and {len(processed_test)} eval samples."
-        )
+        try:
+            next(iter(processed_test))
+            print("Successfully verified active stream for processed_test.")
+        except StopIteration:
+            raise ValueError(
+                "processed_test iterator is empty! Check IMAGE_BASE_DIR or image headers."
+            )
 
         data_collector = Data_Collector(processor=self.processor)
 
