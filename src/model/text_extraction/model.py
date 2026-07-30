@@ -66,4 +66,4 @@ class text_extraction:
             clean_up_tokenization_spaces=False
         )
 
-        return decoded_output
+        return decoded_output[0]
