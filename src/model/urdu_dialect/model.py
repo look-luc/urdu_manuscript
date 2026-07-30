@@ -17,7 +17,6 @@ from transformers import (
     Qwen2_5_VLForConditionalGeneration,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
-    Trainer,
 )
 
 root_dir = Path(__file__).resolve().parents[3]
@@ -59,29 +58,12 @@ class unification_urdu_lang_model:
         if isinstance(pred_ids, tuple):
             pred_ids = pred_ids[0]
 
-        cleaned_pred_ids = []
-        for i in range(len(label_ids)):
-            label_row = label_ids[i]
-            pred_row = pred_ids[i]
+        # Replace -100 pad values in predictions and labels with tokenizer's pad_token_id
+        pad_id = self.processor.tokenizer.pad_token_id
+        clean_pred_ids = np.where(pred_ids != -100, pred_ids, pad_id)
+        clean_label_ids = np.where(label_ids != -100, label_ids, pad_id)
 
-            # Identify prompt offset by finding the first unmasked label index
-            valid_label_indices = np.where(label_row != -100)[0]
-
-            if len(valid_label_indices) > 0:
-                prompt_len = valid_label_indices[0]
-                # Strip prepended prompt tokens if present in predictions
-                if len(pred_row) > prompt_len:
-                    pred_row = pred_row[prompt_len:]
-
-            cleaned_pred_ids.append(pred_row)
-
-        clean_label_ids = np.where(
-            label_ids != -100, label_ids, self.processor.tokenizer.pad_token_id
-        )
-        clean_pred_ids = np.where(
-            pred_ids != -100, pred_ids, self.processor.tokenizer.pad_token_id
-        )
-
+        # Decode directly without slicing (predict_with_generate returns only generated tokens)
         decoded_preds = self.processor.tokenizer.batch_decode(
             clean_pred_ids, skip_special_tokens=True
         )
@@ -181,21 +163,32 @@ class unification_urdu_lang_model:
             return False
 
     def _process(self, example):
-        image_input = example["image"]
-        image_tensor = None
-        if isinstance(image_input, dict):
-            if image_input.get("bytes") is not None:
-                raw_bytes = image_input["bytes"]
-                if not self._is_valid_header(raw_bytes):
-                    return {"is_valid": False}
-                storage_tensor = torch.frombuffer(
-                    bytearray(raw_bytes), dtype=torch.uint8
-                )
-                image_tensor = tv_io.decode_image(
-                    storage_tensor, mode=tv_io.ImageReadMode.RGB
-                )
-            elif image_input.get("path") is not None:
-                image_path = image_input["path"]
+        try:
+            image_input = example.get("image")
+            image_tensor = None
+
+            if isinstance(image_input, dict):
+                if image_input.get("bytes") is not None:
+                    raw_bytes = image_input["bytes"]
+                    if not self._is_valid_header(raw_bytes):
+                        return {"is_valid": False}
+                    storage_tensor = torch.frombuffer(
+                        bytearray(raw_bytes), dtype=torch.uint8
+                    )
+                    image_tensor = tv_io.decode_image(
+                        storage_tensor, mode=tv_io.ImageReadMode.RGB
+                    )
+                elif image_input.get("path") is not None:
+                    image_path = image_input["path"]
+                    if not os.path.isabs(image_path):
+                        image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+                    if self._is_valid_file(image_path):
+                        image_tensor = tv_io.read_image(
+                            image_path, mode=tv_io.ImageReadMode.RGB
+                        )
+
+            elif isinstance(image_input, str):
+                image_path = image_input
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                 if self._is_valid_file(image_path):
@@ -203,57 +196,49 @@ class unification_urdu_lang_model:
                         image_path, mode=tv_io.ImageReadMode.RGB
                     )
 
-        elif isinstance(image_input, str):
-            image_path = image_input
-            if not os.path.isabs(image_path):
-                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-            if self._is_valid_file(image_path):
-                image_tensor = tv_io.read_image(
-                    image_path, mode=tv_io.ImageReadMode.RGB
-                )
+            if image_tensor is None:
+                return {"is_valid": False}
 
-        if image_tensor is None:
+            image_pil = F.to_pil_image(image_tensor)
+
+            message = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": example["text"]}],
+                },
+            ]
+
+            formatted_text = self.processor.apply_chat_template(
+                message, tokenize=False, add_generation_prompt=False
+            )
+
+            inputs = self.processor(
+                text=[formatted_text],
+                images=[image_pil],
+                padding=False,
+                truncation=True,
+                max_length=1024,
+                min_pixels=128 * 128,
+                max_pixels=512 * 28 * 28,
+                return_tensors="pt",
+            )
+
+            return {
+                "input_ids": inputs["input_ids"].squeeze(0),
+                "attention_mask": inputs["attention_mask"].squeeze(0),
+                "pixel_values": inputs["pixel_values"],
+                "image_grid_thw": inputs["image_grid_thw"],
+                "is_valid": True,
+            }
+        except Exception:
             return {"is_valid": False}
-
-        image_tensor = F.to_pil_image(image_tensor)
-
-        text = example["text"]
-        message = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": self.prompt},
-                ],
-            },
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": example["text"]}],
-            },
-        ]
-
-        text = self.processor.apply_chat_template(
-            message, tokenize=False, add_generation_prompt=False
-        )
-
-        inputs = self.processor(
-            text=[text],
-            images=[image_tensor],
-            padding=False,
-            truncation=True,
-            max_length=1024,
-            min_pixels = 128 * 128,
-            max_pixels = 512 * 28 * 28,
-            return_tensors="pt",
-        )
-
-        input_dict = {}
-        input_dict["input_ids"] = inputs["input_ids"].squeeze(0)
-        input_dict["attention_mask"] = inputs["attention_mask"].squeeze(0)
-        input_dict["pixel_values"] = inputs["pixel_values"]
-        input_dict["image_grid_thw"] = inputs["image_grid_thw"]
-        input_dict["is_valid"] = True
-        return input_dict
 
     def train(self):
         self.max_tokens = 2000
@@ -278,13 +263,13 @@ class unification_urdu_lang_model:
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
             gradient_accumulation_steps=8,
-            learning_rate=2E-5,
+            learning_rate=2e-5,
             max_steps=2500,
             eval_strategy="steps",
-            eval_steps=250,
+            eval_steps=833,
             predict_with_generate=True,
-            generation_max_length=1024,
-            bf16=True
+            generation_max_length=512,
+            bf16=True,
         )
 
         trainer = Seq2SeqTrainer(
@@ -296,4 +281,10 @@ class unification_urdu_lang_model:
             compute_metrics=self._compute_metrics,
         )
 
-        return trainer.train()
+        train_result = trainer.train()
+
+        save_path = "../text_extraction/urdu_model/saved_model"
+        trainer.save_model(save_path)
+        self.processor.save_pretrained(save_path)
+
+        return train_result
