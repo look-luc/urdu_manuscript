@@ -14,9 +14,7 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
-        prompt: str = """
-            You are a automated OCR engine operating under strict structural constraints.
-            Extract the historical Urdu Nastaliq script exactly as it appears in the image.
+        prompt: str = """You are a automated OCR engine operating under strict structural constraints. Extract the historical Urdu Nastaliq script exactly as it appears in the image.
             """,
             path_to_model:str=f"{script_path}/urdu_model"
     ) -> None:
@@ -36,8 +34,18 @@ class text_extraction:
             device_map="auto",
             trust_remote_code=True,
         )
+
         peft_model = PeftModel.from_pretrained(model, self.path_to_model)
-        processor = AutoProcessor.from_pretrained(self.model_id)
+        peft_model = peft_model.merge_and_unload()
+
+        try:
+            processor = AutoProcessor.from_pretrained(self.path_to_model)
+        except OSError:
+            processor = AutoProcessor.from_pretrained(self.model_id)
+
+        processor.image_processor.min_pixels=512 * 28 * 28
+        processor.image_processor.max_pixels=2048 * 28 * 28
+
         return peft_model, processor
 
     def extract(self, pth_to_img: str):
@@ -67,7 +75,11 @@ class text_extraction:
         ).to(self.device)
 
         with torch.no_grad():
-            ids = self.model.generate(**inputs, max_new_tokens=2000)
+            ids = self.model.generate(
+                **inputs,
+                max_new_tokens=2000,
+                repetition_penalty=1.15,
+            )
 
         generated_ids_trimmed = [
             out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, ids)
@@ -76,7 +88,6 @@ class text_extraction:
         decoded_output = self.processor.batch_decode(
             generated_ids_trimmed,
             skip_special_tokens=True,
-            clean_up_tokenization_spaces=False
         )
 
         return decoded_output[0]

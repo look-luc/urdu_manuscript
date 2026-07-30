@@ -16,8 +16,8 @@ DATA_PATH = SCRIPT_DIR.parent / "data"
 
 def run_model(what_model:str):
     if what_model == "text_extraction":
-        pg10 = text_extraction().extract(str(DATA_PATH/"pg10.png"))
-        pg11 = text_extraction().extract(str(DATA_PATH/"pg11"))
+        pg10 = text_extraction().extract(str(DATA_PATH/"eval_data/pg10.png"))
+        pg11 = text_extraction().extract(str(DATA_PATH/"eval_data/pg11.png"))
 
         output_dir = Path("./model/text_extraction_output")
         output_dir.mkdir(parents=True, exist_ok=True)
