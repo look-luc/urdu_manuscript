@@ -56,6 +56,25 @@ class unification_urdu_lang_model:
         pred_ids = eval_pred.predictions
         label_ids = eval_pred.label_ids
 
+        if isinstance(pred_ids, tuple):
+            pred_ids = pred_ids[0]
+
+        cleaned_pred_ids = []
+        for i in range(len(label_ids)):
+            label_row = label_ids[i]
+            pred_row = pred_ids[i]
+
+            # Identify prompt offset by finding the first unmasked label index
+            valid_label_indices = np.where(label_row != -100)[0]
+
+            if len(valid_label_indices) > 0:
+                prompt_len = valid_label_indices[0]
+                # Strip prepended prompt tokens if present in predictions
+                if len(pred_row) > prompt_len:
+                    pred_row = pred_row[prompt_len:]
+
+            cleaned_pred_ids.append(pred_row)
+
         clean_label_ids = np.where(
             label_ids != -100, label_ids, self.processor.tokenizer.pad_token_id
         )
