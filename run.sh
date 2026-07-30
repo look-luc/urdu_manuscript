@@ -23,12 +23,9 @@ module purge
 module load anaconda
 conda activate urdu_manuscript_stable
 
-# Dynamically locate site-packages for PyTorch's bundled Nvidia libraries
-SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
 export LD_LIBRARY_PATH="$SITE_PKG/nvidia/cudnn/lib:$SITE_PKG/nvidia/cublas/lib:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 
 cd /projects/$USER/urdu_manuscript
 
 MODEL_TYPE=${1:-text_extraction}
-RUN_TYPE=${2:-train}
 python -u run.py -m "$MODEL_TYPE"

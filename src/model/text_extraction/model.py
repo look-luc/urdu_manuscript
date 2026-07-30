@@ -40,10 +40,10 @@ class text_extraction:
         processor = AutoProcessor.from_pretrained(self.model_id)
         return model, processor
 
-    def extract(self, image_path: str):
+    def extract(self, pth_to_img: str):
         self.model.eval()
         image_tensor = tv_io.read_image(
-            image_path, mode=tv_io.ImageReadMode.RGB
+            pth_to_img, mode=tv_io.ImageReadMode.RGB
         )
         image_tensor = to_pil_image(image_tensor)
 
