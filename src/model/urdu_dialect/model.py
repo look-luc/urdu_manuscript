@@ -15,8 +15,9 @@ from transformers import (
     AutoProcessor,
     BitsAndBytesConfig,
     Qwen2_5_VLForConditionalGeneration,
+    Seq2SeqTrainer,
+    Seq2SeqTrainingArguments,
     Trainer,
-    TrainingArguments,
 )
 
 root_dir = Path(__file__).resolve().parents[3]
@@ -126,7 +127,7 @@ class unification_urdu_lang_model:
         model = get_peft_model(model, peft_config)
 
         processor = AutoProcessor.from_pretrained(
-            self.model_id, min_pixels=128 * 128, max_pixels=256 * 256
+            self.model_id, min_pixels=128 * 128, max_pixels=512 * 28 * 28
         )
 
         data = get_datasets()
@@ -221,9 +222,9 @@ class unification_urdu_lang_model:
             images=[image_tensor],
             padding=False,
             truncation=True,
-            max_length=384,
+            max_length=1024,
             min_pixels = 128 * 128,
-            max_pixels = 200 * 200,
+            max_pixels = 512 * 28 * 28,
             return_tensors="pt",
         )
 
@@ -234,11 +235,6 @@ class unification_urdu_lang_model:
         input_dict["image_grid_thw"] = inputs["image_grid_thw"]
         input_dict["is_valid"] = True
         return input_dict
-
-    def _preprocess_eval_logits(self, logits, labels):
-        if isinstance(logits, tuple):
-            logits = logits[0]
-        return torch.argmax(logits, dim=-1)
 
     def train(self):
         self.max_tokens = 2000
@@ -258,41 +254,26 @@ class unification_urdu_lang_model:
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
 
-        training_args = TrainingArguments(
-            dataloader_num_workers=2,
-            dataloader_pin_memory=True,
+        training_args = Seq2SeqTrainingArguments(
             output_dir="./results",
-            ignore_data_skip=True,
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
-            eval_accumulation_steps=1,
             gradient_accumulation_steps=8,
-            bf16=True,
-            optim="paged_adamw_8bit",
-            remove_unused_columns=False,
-            learning_rate=2e-5,
-            logging_steps=10,
-            max_steps=2000,
+            learning_rate=2E-5,
+            max_steps=2500,
             eval_strategy="steps",
             eval_steps=250,
-            save_strategy="steps",
-            save_steps=250,
-            accelerator_config={
-                "dispatch_batches": False,
-                "split_batches": False,
-            },
-            gradient_checkpointing_kwargs={
-                "use_reentrant": False
-            }
+            predict_with_generate=True,
+            generation_max_length=1024,
+            bf16=True
         )
 
-        trainer = Trainer(
+        trainer = Seq2SeqTrainer(
             model=self.model,
             args=training_args,
             train_dataset=processed_train,
             eval_dataset=processed_test,
             data_collator=data_collector,
-            preprocess_logits_for_metrics=self._preprocess_eval_logits,
             compute_metrics=self._compute_metrics,
         )
 
