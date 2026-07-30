@@ -167,7 +167,7 @@ class unification_urdu_lang_model:
         image_input = example.get("image")
         image_pil = None
 
-        if v2.utils.is_pil_image(image_input):
+        if hasattr(image_input, "save"):
             image_pil = image_input.convert("RGB")
 
         elif isinstance(image_input, dict):
@@ -251,10 +251,23 @@ class unification_urdu_lang_model:
         test_dataset = self.data["test"]
 
         processed_train = train_dataset.map(self._process).filter(
-            lambda example: example.get("is_valid", False)
+            lambda example: example.get("is_valid") is True
         )
         processed_test = test_dataset.map(self._process).filter(
-            lambda x: x.get("is_valid", False)
+            lambda x: x.get("is_valid") is True
+        )
+
+        if len(processed_train) == 0:
+            raise ValueError(
+                "processed_train contains 0 valid samples. Check IMAGE_BASE_DIR path resolution or header validation."
+            )
+        if len(processed_test) == 0:
+            raise ValueError(
+                "processed_test contains 0 valid samples. Check IMAGE_BASE_DIR path resolution or header validation."
+            )
+
+        print(
+            f"Successfully processed {len(processed_train)} train samples and {len(processed_test)} eval samples."
         )
 
         data_collector = Data_Collector(processor=self.processor)
