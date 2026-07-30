@@ -174,7 +174,7 @@ class unification_urdu_lang_model:
             if image_input.get("bytes") is not None:
                 raw_bytes = image_input["bytes"]
                 if not self._is_valid_header(raw_bytes):
-                    return {"is_valid": False}
+                    raise ValueError(f"Invalid image header in byte stream for text: {example.get('text')}")
                 storage_tensor = torch.frombuffer(
                     bytearray(raw_bytes), dtype=torch.uint8
                 )
@@ -187,25 +187,26 @@ class unification_urdu_lang_model:
                 image_path = image_input["path"]
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-                if self._is_valid_file(image_path):
-                    image_tensor = tv_io.read_image(
-                        image_path, mode=tv_io.ImageReadMode.RGB
-                    )
-                    image_pil = F.to_pil_image(image_tensor)
-
-        elif isinstance(image_input, str):
-            image_path = image_input
-            if not os.path.isabs(image_path):
-                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-            if self._is_valid_file(image_path):
+                if not self._is_valid_file(image_path):
+                    raise FileNotFoundError(f"Image path missing or invalid header at: {image_path}")
                 image_tensor = tv_io.read_image(
                     image_path, mode=tv_io.ImageReadMode.RGB
                 )
                 image_pil = F.to_pil_image(image_tensor)
 
-        # Reject sample safely if no branch generated a valid PIL image
+        elif isinstance(image_input, str):
+            image_path = image_input
+            if not os.path.isabs(image_path):
+                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+            if not self._is_valid_file(image_path):
+                raise FileNotFoundError(f"Image path missing or invalid header at: {image_path}")
+            image_tensor = tv_io.read_image(
+                image_path, mode=tv_io.ImageReadMode.RGB
+            )
+            image_pil = F.to_pil_image(image_tensor)
+
         if image_pil is None:
-            return {"is_valid": False}
+            raise ValueError(f"Could not load PIL image for sample: {example}")
 
         message = [
             {
@@ -241,7 +242,7 @@ class unification_urdu_lang_model:
             "attention_mask": inputs["attention_mask"].squeeze(0),
             "pixel_values": inputs["pixel_values"],
             "image_grid_thw": inputs["image_grid_thw"],
-            "is_valid": True,
+            "is_valid": True
         }
 
     def train(self):
@@ -250,28 +251,17 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        processed_train = train_dataset.map(self._process).filter(
-            lambda example: example.get("is_valid") is True
-        )
-        processed_test = test_dataset.map(self._process).filter(
-            lambda x: x.get("is_valid") is True
-        )
+        train_cols = getattr(train_dataset, "column_names", None)
+        test_cols = getattr(test_dataset, "column_names", None)
+
+        processed_train = train_dataset.map(self._process, remove_columns=train_cols)
+        processed_test = test_dataset.map(self._process, remove_columns=test_cols)
 
         try:
             next(iter(processed_train))
             print("Successfully verified active stream for processed_train.")
         except StopIteration:
-            raise ValueError(
-                "processed_train iterator is empty! Check IMAGE_BASE_DIR or image headers."
-            )
-
-        try:
-            next(iter(processed_test))
-            print("Successfully verified active stream for processed_test.")
-        except StopIteration:
-            raise ValueError(
-                "processed_test iterator is empty! Check IMAGE_BASE_DIR or image headers."
-            )
+            raise ValueError("processed_train iterator is empty!")
 
         data_collector = Data_Collector(processor=self.processor)
 
