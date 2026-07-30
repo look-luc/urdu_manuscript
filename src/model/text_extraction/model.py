@@ -14,7 +14,7 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
-        prompt: str = """You are a automated OCR engine operating under strict structural constraints. Extract the historical Urdu Nastaliq script exactly as it appears in the image.
+        prompt: str = """"You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.\nAnalyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.\nOutput ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription."
             """,
             path_to_model:str=f"{script_path}/urdu_model"
     ) -> None:
@@ -38,13 +38,10 @@ class text_extraction:
         peft_model = PeftModel.from_pretrained(model, self.path_to_model)
         peft_model = peft_model.merge_and_unload()
 
-        try:
-            processor = AutoProcessor.from_pretrained(self.path_to_model)
-        except OSError:
-            processor = AutoProcessor.from_pretrained(self.model_id)
+        processor = AutoProcessor.from_pretrained(self.model_id)
 
-        processor.image_processor.min_pixels=512 * 28 * 28
-        processor.image_processor.max_pixels=2048 * 28 * 28
+        processor.image_processor.min_pixels=128 * 128
+        processor.image_processor.max_pixels=200 * 200
 
         return peft_model, processor
 
