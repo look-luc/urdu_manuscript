@@ -39,12 +39,18 @@ class Data_Collector:
 
             while pixels.dim() > 2:
                 pixels = pixels.squeeze(0)
-            pixel_values_list.append(pixels)
 
             while grid_thw.dim() > 2:
                 grid_thw = grid_thw.squeeze(0)
             if grid_thw.dim() == 1:
                 grid_thw = grid_thw.unsqueeze(0)
+
+            GRID_H = image_grid_thw_list[0][1]
+            GRID_W = image_grid_thw_list[0][2]
+
+            if GRID_H < 2 or GRID_W < 2:
+                raise ValueError(f"Invalid grid dimension {GRID_H} {GRID_W}")
+            pixel_values_list.append(pixels)
             image_grid_thw_list.append(grid_thw)
 
         pixel_values = torch.cat(pixel_values_list, dim=0)
