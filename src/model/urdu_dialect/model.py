@@ -11,6 +11,8 @@ import torchvision.transforms.functional as F
 from evaluate import load
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
+from torchvision.io import ImageReadMode, read_image
+from torchvision.transforms import v2
 from transformers import (
     AutoProcessor,
     BitsAndBytesConfig,
@@ -165,9 +167,12 @@ class unification_urdu_lang_model:
     def _process(self, example):
         try:
             image_input = example.get("image")
-            image_tensor = None
+            image_pil = None
 
-            if isinstance(image_input, dict):
+            if v2.utils.is_pil_image(image_input):
+                image_pil = image_input.convert("RGB")
+
+            elif isinstance(image_input, dict):
                 if image_input.get("bytes") is not None:
                     raw_bytes = image_input["bytes"]
                     if not self._is_valid_header(raw_bytes):
@@ -178,6 +183,8 @@ class unification_urdu_lang_model:
                     image_tensor = tv_io.decode_image(
                         storage_tensor, mode=tv_io.ImageReadMode.RGB
                     )
+                    image_pil = F.to_pil_image(image_tensor)
+
                 elif image_input.get("path") is not None:
                     image_path = image_input["path"]
                     if not os.path.isabs(image_path):
@@ -186,6 +193,7 @@ class unification_urdu_lang_model:
                         image_tensor = tv_io.read_image(
                             image_path, mode=tv_io.ImageReadMode.RGB
                         )
+                        image_pil = F.to_pil_image(image_tensor)
 
             elif isinstance(image_input, str):
                 image_path = image_input
@@ -195,11 +203,11 @@ class unification_urdu_lang_model:
                     image_tensor = tv_io.read_image(
                         image_path, mode=tv_io.ImageReadMode.RGB
                     )
+                    image_pil = F.to_pil_image(image_tensor)
 
-            if image_tensor is None:
+            # Reject sample safely if no branch generated a valid PIL image
+            if image_pil is None:
                 return {"is_valid": False}
-
-            image_pil = F.to_pil_image(image_tensor)
 
             message = [
                 {
