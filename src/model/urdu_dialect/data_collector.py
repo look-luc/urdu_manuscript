@@ -33,12 +33,26 @@ class Data_Collector:
             return_tensors="pt",
         )
 
+        pixel_values_list = []
+        image_grid_thw_list = []
+        for feature in features:
+            pixels = feature["pixel_values"]
+            grid_thw = feature["image_grid_thw"]
+
+            if pixels.dim() > 4:
+                pixels = pixels.squeeze(0)
+            pixel_values_list.append(pixels)
+
+            if grid_thw.dim() == 2 and grid_thw.size(0) == 1:
+                grid_thw = grid_thw.squeeze(0)
+            image_grid_thw_list.append(grid_thw)
+
         # Extract visual features safely
         pixel_values = torch.cat(
-            [feature["pixel_values"] for feature in features], dim=0
+            pixel_values_list, dim=0
         )
         image_grid_thw = torch.cat(
-            [feature["image_grid_thw"] for feature in features], dim=0
+            image_grid_thw_list, dim=0
         )
 
         labels = padded_text["input_ids"].clone()
