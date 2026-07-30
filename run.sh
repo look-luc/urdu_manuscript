@@ -17,6 +17,10 @@ export EVALUATE_CACHE_DIR="/projects/$USER/.cache/evaluate"
 export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+export TORCH_CUDA_IPC_DISABLE=1
+export TOKENIZERS_PARALLELISM=false
+export NCCL_P2P_DISABLE=1
+
 mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
 
 module purge

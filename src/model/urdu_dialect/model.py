@@ -11,7 +11,6 @@ import torchvision.transforms.functional as F
 from evaluate import load
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
-from torchvision.io import ImageReadMode, read_image
 from torchvision.transforms import v2
 from transformers import (
     AutoProcessor,
@@ -165,38 +164,27 @@ class unification_urdu_lang_model:
             return False
 
     def _process(self, example):
-        try:
-            image_input = example.get("image")
-            image_pil = None
+        image_input = example.get("image")
+        image_pil = None
 
-            if v2.utils.is_pil_image(image_input):
-                image_pil = image_input.convert("RGB")
+        if v2.utils.is_pil_image(image_input):
+            image_pil = image_input.convert("RGB")
 
-            elif isinstance(image_input, dict):
-                if image_input.get("bytes") is not None:
-                    raw_bytes = image_input["bytes"]
-                    if not self._is_valid_header(raw_bytes):
-                        return {"is_valid": False}
-                    storage_tensor = torch.frombuffer(
-                        bytearray(raw_bytes), dtype=torch.uint8
-                    )
-                    image_tensor = tv_io.decode_image(
-                        storage_tensor, mode=tv_io.ImageReadMode.RGB
-                    )
-                    image_pil = F.to_pil_image(image_tensor)
+        elif isinstance(image_input, dict):
+            if image_input.get("bytes") is not None:
+                raw_bytes = image_input["bytes"]
+                if not self._is_valid_header(raw_bytes):
+                    return {"is_valid": False}
+                storage_tensor = torch.frombuffer(
+                    bytearray(raw_bytes), dtype=torch.uint8
+                )
+                image_tensor = tv_io.decode_image(
+                    storage_tensor, mode=tv_io.ImageReadMode.RGB
+                )
+                image_pil = F.to_pil_image(image_tensor)
 
-                elif image_input.get("path") is not None:
-                    image_path = image_input["path"]
-                    if not os.path.isabs(image_path):
-                        image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-                    if self._is_valid_file(image_path):
-                        image_tensor = tv_io.read_image(
-                            image_path, mode=tv_io.ImageReadMode.RGB
-                        )
-                        image_pil = F.to_pil_image(image_tensor)
-
-            elif isinstance(image_input, str):
-                image_path = image_input
+            elif image_input.get("path") is not None:
+                image_path = image_input["path"]
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                 if self._is_valid_file(image_path):
@@ -205,48 +193,56 @@ class unification_urdu_lang_model:
                     )
                     image_pil = F.to_pil_image(image_tensor)
 
-            # Reject sample safely if no branch generated a valid PIL image
-            if image_pil is None:
-                return {"is_valid": False}
+        elif isinstance(image_input, str):
+            image_path = image_input
+            if not os.path.isabs(image_path):
+                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+            if self._is_valid_file(image_path):
+                image_tensor = tv_io.read_image(
+                    image_path, mode=tv_io.ImageReadMode.RGB
+                )
+                image_pil = F.to_pil_image(image_tensor)
 
-            message = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image"},
-                        {"type": "text", "text": self.prompt},
-                    ],
-                },
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": example["text"]}],
-                },
-            ]
-
-            formatted_text = self.processor.apply_chat_template(
-                message, tokenize=False, add_generation_prompt=False
-            )
-
-            inputs = self.processor(
-                text=[formatted_text],
-                images=[image_pil],
-                padding=False,
-                truncation=True,
-                max_length=1024,
-                min_pixels=128 * 128,
-                max_pixels=512 * 28 * 28,
-                return_tensors="pt",
-            )
-
-            return {
-                "input_ids": inputs["input_ids"].squeeze(0),
-                "attention_mask": inputs["attention_mask"].squeeze(0),
-                "pixel_values": inputs["pixel_values"],
-                "image_grid_thw": inputs["image_grid_thw"],
-                "is_valid": True,
-            }
-        except Exception:
+        # Reject sample safely if no branch generated a valid PIL image
+        if image_pil is None:
             return {"is_valid": False}
+
+        message = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": self.prompt},
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": example["text"]}],
+            },
+        ]
+
+        formatted_text = self.processor.apply_chat_template(
+            message, tokenize=False, add_generation_prompt=False
+        )
+
+        inputs = self.processor(
+            text=[formatted_text],
+            images=[image_pil],
+            padding=False,
+            truncation=True,
+            max_length=1024,
+            min_pixels=128 * 128,
+            max_pixels=512 * 28 * 28,
+            return_tensors="pt",
+        )
+
+        return {
+            "input_ids": inputs["input_ids"].squeeze(0),
+            "attention_mask": inputs["attention_mask"].squeeze(0),
+            "pixel_values": inputs["pixel_values"],
+            "image_grid_thw": inputs["image_grid_thw"],
+            "is_valid": True,
+        }
 
     def train(self):
         self.max_tokens = 2000
