@@ -61,7 +61,7 @@ class text_extraction:
         image_tensor = to_pil_image(image_tensor)
 
         inputs = self.processor(
-            image=image_tensor,
+            images=image_tensor,
             text=text,
             return_tensors = "pt"
         ).to(self.device)
