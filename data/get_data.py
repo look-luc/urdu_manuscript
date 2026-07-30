@@ -15,17 +15,16 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 def resolve_path(example):
-    """Prepends the correct absolute base directory to the image path string or dictionary."""
-    # Handle case where 'image' is a dictionary from Image(decode=False)
-    if isinstance(example["image"], dict) and "path" in example["image"]:
-        path = example["image"]["path"]
-        if path and not path.startswith(IMAGE_BASE_DIR):
+    image_val = example.get("image")
+
+    if isinstance(image_val, dict) and "path" in image_val:
+        path = image_val["path"]
+        if path and not path.startswith(("http://", "https://")) and not path.startswith(IMAGE_BASE_DIR):
             example["image"]["path"] = os.path.join(IMAGE_BASE_DIR, path)
 
-    # Handle case where 'image' is still a raw string
-    elif isinstance(example["image"], str):
-        if not example["image"].startswith(IMAGE_BASE_DIR):
-            example["image"] = os.path.join(IMAGE_BASE_DIR, example["image"])
+    elif isinstance(image_val, str):
+        if not image_val.startswith(("http://", "https://")) and not image_val.startswith(IMAGE_BASE_DIR):
+            example["image"] = os.path.join(IMAGE_BASE_DIR, image_val)
 
     return example
 

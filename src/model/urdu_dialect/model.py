@@ -5,6 +5,7 @@ from pathlib import Path
 
 import evaluate
 import numpy as np
+import requests
 import torch
 import torchvision.io as tv_io
 import torchvision.transforms.functional as F
@@ -185,6 +186,39 @@ class unification_urdu_lang_model:
 
             elif image_input.get("path") is not None:
                 image_path = image_input["path"]
+                if image_path.startswith(("http://", "https://")):
+                    response = requests.get(image_path, timeout=10)
+                    response.raise_for_status()
+                    storage_tensor = torch.frombuffer(
+                        bytearray(response.content), dtype=torch.uint8
+                    )
+                    image_tensor = tv_io.decode_image(
+                        storage_tensor, mode=tv_io.ImageReadMode.RGB
+                    )
+                    image_pil = F.to_pil_image(image_tensor)
+                else:
+                    if not os.path.isabs(image_path):
+                        image_path = os.path.join(IMAGE_BASE_DIR, image_path)
+                    if not self._is_valid_file(image_path):
+                        raise FileNotFoundError(f"Image path missing or invalid header at: {image_path}")
+                    image_tensor = tv_io.read_image(
+                        image_path, mode=tv_io.ImageReadMode.RGB
+                    )
+                    image_pil = F.to_pil_image(image_tensor)
+
+        elif isinstance(image_input, str):
+            image_path = image_input
+            if image_path.startswith(("http://", "https://")):
+                response = requests.get(image_path, timeout=10)
+                response.raise_for_status()
+                storage_tensor = torch.frombuffer(
+                    bytearray(response.content), dtype=torch.uint8
+                )
+                image_tensor = tv_io.decode_image(
+                    storage_tensor, mode=tv_io.ImageReadMode.RGB
+                )
+                image_pil = F.to_pil_image(image_tensor)
+            else:
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                 if not self._is_valid_file(image_path):
@@ -193,17 +227,6 @@ class unification_urdu_lang_model:
                     image_path, mode=tv_io.ImageReadMode.RGB
                 )
                 image_pil = F.to_pil_image(image_tensor)
-
-        elif isinstance(image_input, str):
-            image_path = image_input
-            if not os.path.isabs(image_path):
-                image_path = os.path.join(IMAGE_BASE_DIR, image_path)
-            if not self._is_valid_file(image_path):
-                raise FileNotFoundError(f"Image path missing or invalid header at: {image_path}")
-            image_tensor = tv_io.read_image(
-                image_path, mode=tv_io.ImageReadMode.RGB
-            )
-            image_pil = F.to_pil_image(image_tensor)
 
         if image_pil is None:
             raise ValueError(f"Could not load PIL image for sample: {example}")
@@ -280,6 +303,7 @@ class unification_urdu_lang_model:
             predict_with_generate=True,
             generation_max_length=512,
             bf16=True,
+            remove_unused_columns=False,
         )
 
         trainer = Seq2SeqTrainer(
