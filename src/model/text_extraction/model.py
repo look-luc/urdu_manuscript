@@ -5,8 +5,8 @@ import torchvision.io as tv_io
 from peft import PeftModel
 from torchvision.transforms.functional import to_pil_image
 from transformers import (
+    AutoModelForImageTextToText,
     AutoProcessor,
-    Qwen2VLForConditionalGeneration,
 )
 
 script_path = root_dir = Path(__file__).resolve().parent
@@ -30,18 +30,31 @@ class text_extraction:
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
+        model = AutoModelForImageTextToText.from_pretrained(
             self.model_id,
             torch_dtype=torch.bfloat16,
             device_map="auto",
             trust_remote_code=True,
         )
-        model = PeftModel.from_pretrained(model, self.path_to_model)
+        peft_model = PeftModel.from_pretrained(model, self.path_to_model)
         processor = AutoProcessor.from_pretrained(self.model_id)
-        return model, processor
+        return peft_model, processor
 
     def extract(self, pth_to_img: str):
         self.model.eval()
+
+        message_text = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt}
+                    ]
+                }
+            ]
+        text = self.processor.apply_chat_template(
+            message_text, tokenize=False, add_generation_prompt=True
+        )
         image_tensor = tv_io.read_image(
             pth_to_img, mode=tv_io.ImageReadMode.RGB
         )
@@ -49,7 +62,7 @@ class text_extraction:
 
         inputs = self.processor(
             image=image_tensor,
-            text=self.prompt,
+            text=text,
             return_tensors = "pt"
         ).to(self.device)
 
