@@ -10,7 +10,6 @@ class Data_Collector:
         )
 
     def __call__(self, features):
-        # Filter out invalid or empty features safely
         features = [
             f for f in features if f is not None and f.get("is_valid", False)
         ]
@@ -19,7 +18,6 @@ class Data_Collector:
                 "Data_Collector received an empty batch or all samples in the batch failed validation."
             )
 
-        # Separate text tensors from visual features
         input_ids_list = [feature["input_ids"] for feature in features]
         attention_mask_list = [
             feature["attention_mask"] for feature in features
@@ -39,21 +37,18 @@ class Data_Collector:
             pixels = feature["pixel_values"]
             grid_thw = feature["image_grid_thw"]
 
-            if pixels.dim() > 4:
+            while pixels.dim() > 2:
                 pixels = pixels.squeeze(0)
             pixel_values_list.append(pixels)
 
-            if grid_thw.dim() == 2 and grid_thw.size(0) == 1:
+            while grid_thw.dim() > 2:
                 grid_thw = grid_thw.squeeze(0)
+            if grid_thw.dim() == 1:
+                grid_thw = grid_thw.unsqueeze(0)
             image_grid_thw_list.append(grid_thw)
 
-        # Extract visual features safely
-        pixel_values = torch.cat(
-            pixel_values_list, dim=0
-        )
-        image_grid_thw = torch.cat(
-            image_grid_thw_list, dim=0
-        )
+        pixel_values = torch.cat(pixel_values_list, dim=0)
+        image_grid_thw = torch.cat(image_grid_thw_list, dim=0)
 
         labels = padded_text["input_ids"].clone()
         for i in range(len(features)):
