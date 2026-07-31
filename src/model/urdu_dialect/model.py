@@ -273,7 +273,7 @@ class unification_urdu_lang_model:
         except IndexError:
             return {"is_valid": False}
 
-        if grid_h < 2 or grid_w < 2:
+        if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
             return {"is_valid": False}
 
         return {

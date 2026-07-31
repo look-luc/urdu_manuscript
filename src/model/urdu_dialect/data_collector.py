@@ -51,7 +51,7 @@ class Data_Collector:
             GRID_H = grid_thw[0][1]
             GRID_W = grid_thw[0][2]
 
-            if GRID_H < 2 or GRID_W < 2:
+            if GRID_H < 2 or GRID_W < 2 or GRID_H % 2 != 0 or GRID_W % 2 != 0:
                 raise ValueError(f"Invalid grid dimension {GRID_H} {GRID_W}")
             pixel_values_list.append(pixels)
             image_grid_thw_list.append(grid_thw)
