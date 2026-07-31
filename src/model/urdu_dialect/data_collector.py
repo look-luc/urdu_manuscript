@@ -1,3 +1,4 @@
+import copy
 import urllib.request
 
 import torch
@@ -79,6 +80,15 @@ class QwenDataCollator:
                             return True
         return False
 
+    def _bind_image_to_messages(self, raw_txt, img_obj):
+        messages = copy.deepcopy(raw_txt)
+        for msg in messages:
+            if isinstance(msg, dict) and isinstance(msg.get("content"), list):
+                for item in msg["content"]:
+                    if isinstance(item, dict) and item.get("type") == "image":
+                        item["image"] = img_obj
+        return messages
+
     def __call__(self, features):
         text_str = []
         imgs = []
@@ -122,8 +132,9 @@ class QwenDataCollator:
             raw_txt = feature.get("text")
 
             if self._has_image_content(raw_txt):
+                messages = self._bind_image_to_messages(raw_txt, img_obj)
                 formatted_text = self.processor.apply_chat_template(
-                    raw_txt,
+                    messages,
                     tokenize=False,
                     add_generation_prompt=False,
                 )
@@ -133,7 +144,7 @@ class QwenDataCollator:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "image"},
+                            {"type": "image", "image": img_obj},
                             {"type": "text", "text": self.prompt},
                         ],
                     },
