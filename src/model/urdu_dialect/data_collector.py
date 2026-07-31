@@ -42,6 +42,8 @@ class Data_Collector:
 
             while pixels.dim() > 2:
                 pixels = pixels.squeeze(0)
+            if pixels.dim() == 1:
+                pixels = pixels.unsqueeze(0)
 
             while grid_thw.dim() > 2:
                 grid_thw = grid_thw.squeeze(0)

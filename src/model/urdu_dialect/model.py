@@ -12,7 +12,6 @@ import torchvision.transforms.functional as F
 from evaluate import load
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
-from torchvision.transforms import v2
 from transformers import (
     AutoProcessor,
     BitsAndBytesConfig,
@@ -60,12 +59,16 @@ class unification_urdu_lang_model:
         if isinstance(pred_ids, tuple):
             pred_ids = pred_ids[0]
 
-        # Replace -100 pad values in predictions and labels with tokenizer's pad_token_id
+        # Convert logits of shape (batch, seq_len, vocab_size) to token IDs
+        if pred_ids.ndim == 3:
+            pred_ids = np.argmax(pred_ids, axis=-1)
+
         pad_id = self.processor.tokenizer.pad_token_id
-        clean_pred_ids = np.where(pred_ids != -100, pred_ids, pad_id)
+
+        # Mask out ignored tokens (-100) using label_ids alignment
+        clean_pred_ids = np.where(label_ids != -100, pred_ids, pad_id)
         clean_label_ids = np.where(label_ids != -100, label_ids, pad_id)
 
-        # Decode directly without slicing (predict_with_generate returns only generated tokens)
         decoded_preds = self.processor.tokenizer.batch_decode(
             clean_pred_ids, skip_special_tokens=True
         )
@@ -164,7 +167,8 @@ class unification_urdu_lang_model:
         except Exception:
             return False
 
-    def _process(self, example):
+    def _load_image(self, example):
+        """Helper method to load the image consistently for filtering and processing."""
         image_input = example.get("image")
         image_pil = None
 
@@ -175,7 +179,7 @@ class unification_urdu_lang_model:
             if image_input.get("bytes") is not None:
                 raw_bytes = image_input["bytes"]
                 if not self._is_valid_header(raw_bytes):
-                    raise ValueError(f"Invalid image header in byte stream for text: {example.get('text')}")
+                    return None
                 storage_tensor = torch.frombuffer(
                     bytearray(raw_bytes), dtype=torch.uint8
                 )
@@ -188,7 +192,8 @@ class unification_urdu_lang_model:
                 image_path = image_input["path"]
                 if image_path.startswith(("http://", "https://")):
                     response = requests.get(image_path, timeout=10)
-                    response.raise_for_status()
+                    if response.status_code != 200:
+                        return None
                     storage_tensor = torch.frombuffer(
                         bytearray(response.content), dtype=torch.uint8
                     )
@@ -200,7 +205,7 @@ class unification_urdu_lang_model:
                     if not os.path.isabs(image_path):
                         image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                     if not self._is_valid_file(image_path):
-                        raise FileNotFoundError(f"Image path missing or invalid header at: {image_path}")
+                        return None
                     image_tensor = tv_io.read_image(
                         image_path, mode=tv_io.ImageReadMode.RGB
                     )
@@ -210,23 +215,60 @@ class unification_urdu_lang_model:
             image_path = image_input
             if image_path.startswith(("http://", "https://")):
                 response = requests.get(image_path, timeout=10)
-                response.raise_for_status()
+                if response.status_code != 200:
+                    return None
                 storage_tensor = torch.frombuffer(
                     bytearray(response.content), dtype=torch.uint8
                 )
                 image_tensor = tv_io.decode_image(
-                    storage_tensor, mode=tv_io.ImageReadMode.RGB
-                )
+                        storage_tensor, mode=tv_io.ImageReadMode.RGB
+                    )
                 image_pil = F.to_pil_image(image_tensor)
             else:
                 if not os.path.isabs(image_path):
                     image_path = os.path.join(IMAGE_BASE_DIR, image_path)
                 if not self._is_valid_file(image_path):
-                    raise FileNotFoundError(f"Image path missing or invalid header at: {image_path}")
+                    return None
                 image_tensor = tv_io.read_image(
                     image_path, mode=tv_io.ImageReadMode.RGB
                 )
                 image_pil = F.to_pil_image(image_tensor)
+
+        return image_pil
+
+    def _is_valid_example(self, example):
+        """Dedicated upstream filter to validate grid structures."""
+        image_pil = self._load_image(example)
+        if image_pil is None:
+            return False
+
+        try:
+            # Test run the visual part of the processor to check dimensions
+            inputs = self.processor(
+                images=[image_pil],
+                min_pixels=128 * 128,
+                max_pixels=512 * 28 * 28,
+                return_tensors="pt"
+            )
+
+            grid_thw = inputs["image_grid_thw"]
+            while grid_thw.dim() > 2:
+                grid_thw = grid_thw.squeeze(0)
+            if grid_thw.dim() == 1:
+                grid_thw = grid_thw.unsqueeze(0)
+
+            grid_h = grid_thw[0][1]
+            grid_w = grid_thw[0][2]
+
+            if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
+                return False
+
+            return True
+        except Exception:
+            return False
+
+    def _process(self, example):
+        image_pil = self._load_image(example)
 
         if image_pil is None:
             raise ValueError(f"Could not load PIL image for sample: {example}")
@@ -253,7 +295,6 @@ class unification_urdu_lang_model:
             text=[formatted_text],
             images=[image_pil],
             padding=False,
-            # truncation=True,
             max_length=1024,
             min_pixels=128 * 128,
             max_pixels=512 * 28 * 28,
@@ -266,15 +307,6 @@ class unification_urdu_lang_model:
             grid_thw = grid_thw.squeeze(0)
         if grid_thw.dim() == 1:
             grid_thw = grid_thw.unsqueeze(0)
-
-        try:
-            grid_h = grid_thw[0][1]
-            grid_w = grid_thw[0][2]
-        except IndexError:
-            return {"is_valid": False}
-
-        if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
-            return {"is_valid": False}
 
         return {
             "input_ids": inputs["input_ids"].squeeze(0),
@@ -290,11 +322,17 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        train_cols = getattr(train_dataset, "column_names", None)
-        test_cols = getattr(test_dataset, "column_names", None)
+        # Filter the dataset before mapping to drop edge-cases early
+        print("Filtering train dataset for valid image structures...")
+        filtered_train = train_dataset.filter(self._is_valid_example)
+        print("Filtering test dataset for valid image structures...")
+        filtered_test = test_dataset.filter(self._is_valid_example)
 
-        processed_train = train_dataset.map(self._process, remove_columns=train_cols)
-        processed_test = test_dataset.map(self._process, remove_columns=test_cols)
+        train_cols = getattr(filtered_train, "column_names", None)
+        test_cols = getattr(filtered_test, "column_names", None)
+
+        processed_train = filtered_train.map(self._process, remove_columns=train_cols)
+        processed_test = filtered_test.map(self._process, remove_columns=test_cols)
 
         try:
             next(iter(processed_train))
