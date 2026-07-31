@@ -48,8 +48,8 @@ class Data_Collector:
             if grid_thw.dim() == 1:
                 grid_thw = grid_thw.unsqueeze(0)
 
-            GRID_H = image_grid_thw_list[0][1]
-            GRID_W = image_grid_thw_list[0][2]
+            GRID_H = grid_thw[0][1]
+            GRID_W = grid_thw[0][2]
 
             if GRID_H < 2 or GRID_W < 2:
                 raise ValueError(f"Invalid grid dimension {GRID_H} {GRID_W}")
