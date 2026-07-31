@@ -119,7 +119,9 @@ class unification_urdu_lang_model:
             quantization_config=bnb_config,
             device_map={"": 0},
             attn_implementation="sdpa",
+            use_cache=False,
         )
+        model.config.use_cache = False
 
         model = prepare_model_for_kbit_training(model)
 
@@ -356,15 +358,19 @@ class unification_urdu_lang_model:
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
 
+        CPUS_ALLOCATED = 8
+
         training_args = Seq2SeqTrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=1,
-            per_device_eval_batch_size=1,
-            gradient_accumulation_steps=8,
+            per_device_train_batch_size=2,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=4,
+            num_train_epochs=1,
+            dataloader_num_workers=4,
             learning_rate=2e-5,
             max_steps=2500,
             eval_strategy="steps",
-            eval_steps=833,
+            eval_steps=500,
             predict_with_generate=False,
             generation_max_length=512,
             bf16=True,
