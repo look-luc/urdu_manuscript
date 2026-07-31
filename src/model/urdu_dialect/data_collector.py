@@ -44,6 +44,15 @@ class QwenDataCollator:
                 path_str, mode=ImageReadMode.RGB
             ).permute(1, 2, 0)
 
+    def _has_image_content(self, raw_txt):
+        if isinstance(raw_txt, list):
+            for msg in raw_txt:
+                if isinstance(msg, dict) and isinstance(msg.get("content"), list):
+                    for item in msg["content"]:
+                        if isinstance(item, dict) and item.get("type") == "image":
+                            return True
+        return False
+
     def __call__(self, features):
         text_str = []
         imgs = []
@@ -77,15 +86,9 @@ class QwenDataCollator:
 
             raw_txt = feature.get("text")
 
-            if isinstance(raw_txt, list) and all(
-                isinstance(item, dict) for item in raw_txt
-            ):
+            if self._has_image_content(raw_txt):
                 formatted_text = self.processor.apply_chat_template(
                     raw_txt, tokenize=False, add_generation_prompt=False
-                )
-            elif isinstance(raw_txt, dict) and "role" in raw_txt:
-                formatted_text = self.processor.apply_chat_template(
-                    [raw_txt], tokenize=False, add_generation_prompt=False
                 )
             else:
                 target_text = self._extract_text_string(raw_txt)
