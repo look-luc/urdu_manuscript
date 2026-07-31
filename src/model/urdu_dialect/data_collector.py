@@ -1,3 +1,4 @@
+import math
 import os
 
 import requests
@@ -99,26 +100,25 @@ class Data_Collector:
         return None
 
     def _prep_image(self, image_pil):
-        """Pads image to ensure grid height and grid width are >= 2 and even for Qwen2.5-VL patch merging."""
+        """Pads canvas to ensure total pixels >= min_pixels and dimensions are multiples of 56px."""
         if image_pil is None:
             return None
 
         w, h = image_pil.size
-        patch_size = 28
+        min_pixels = 256 * 28 * 28  # 200,704 px
+        factor = 56  # 2 * patch_size (28) guarantees even grid patch counts
 
-        grid_w = max(2, (w + patch_size - 1) // patch_size)
-        grid_h = max(2, (h + patch_size - 1) // patch_size)
+        aspect_ratio = w / h
+        target_area = max(w * h, min_pixels)
 
-        if grid_w % 2 != 0:
-            grid_w += 1
-        if grid_h % 2 != 0:
-            grid_h += 1
+        target_h = math.sqrt(target_area / aspect_ratio)
+        target_w = target_h * aspect_ratio
 
-        target_w = grid_w * patch_size
-        target_h = grid_h * patch_size
+        final_w = math.ceil(target_w / factor) * factor
+        final_h = math.ceil(target_h / factor) * factor
 
-        pad_w = max(0, target_w - w)
-        pad_h = max(0, target_h - h)
+        pad_w = max(0, final_w - w)
+        pad_h = max(0, final_h - h)
 
         if pad_w > 0 or pad_h > 0:
             padding = [
