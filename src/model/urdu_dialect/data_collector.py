@@ -10,6 +10,11 @@ class Data_Collector:
 
     def __init__(self, processor, prompt: str, image_base_dir: str = ""):
         self.processor = processor
+        # Explicitly configure underlying image processor constraints
+        if hasattr(self.processor, "image_processor"):
+            self.processor.image_processor.min_pixels = 256 * 28 * 28
+            self.processor.image_processor.max_pixels = 512 * 28 * 28
+
         self.prompt = prompt
         self.image_base_dir = image_base_dir
         self.pad_token_id = self.processor.tokenizer.pad_token_id
@@ -111,6 +116,11 @@ class Data_Collector:
             if raw_pil is None:
                 continue
 
+            w, h = raw_pil.size
+            # Pre-filter extreme aspect ratios or tiny dimensions that break spatial patching
+            if w < 28 or h < 28 or (w / h > 8.0) or (h / w > 8.0):
+                continue
+
             message = [
                 {
                     "role": "user",
@@ -129,29 +139,13 @@ class Data_Collector:
                 message, tokenize=False, add_generation_prompt=False
             )
 
-            # Test-process the sample to inspect the output image_grid_thw dimensions
-            test_inputs = self.processor(
-                text=[text_str],
-                images=[raw_pil],
-                padding=False,
-                min_pixels=256 * 28 * 28,
-                max_pixels=512 * 28 * 28,
-                return_tensors="pt",
-            )
-
-            grid_thw = test_inputs["image_grid_thw"][0]
-            grid_h, grid_w = grid_thw[1].item(), grid_thw[2].item()
-
-            # Skip samples that break spatial 2x2 patch merging
-            if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
-                continue
-
             images_list.append(raw_pil)
             formatted_texts.append(text_str)
 
         if not images_list:
-            raise ValueError("All samples in batch failed image loading or grid validation.")
+            raise ValueError("All samples in batch failed image loading or dimension checks.")
 
+        # Batch call to processor
         inputs = self.processor(
             text=formatted_texts,
             images=images_list,
@@ -160,6 +154,30 @@ class Data_Collector:
             max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
+
+        # Post-process validation directly on output image_grid_thw tensor
+        grid_thw = inputs["image_grid_thw"]
+        valid_indices = []
+        for idx in range(len(images_list)):
+            gh, gw = grid_thw[idx][1].item(), grid_thw[idx][2].item()
+            if gh >= 2 and gw >= 2 and gh % 2 == 0 and gw % 2 == 0:
+                valid_indices.append(idx)
+
+        if not valid_indices:
+            raise ValueError("No samples in batch satisfied 2x2 grid constraints.")
+
+        # Re-collate batch if invalid samples were pruned
+        if len(valid_indices) < len(images_list):
+            formatted_texts = [formatted_texts[i] for i in valid_indices]
+            images_list = [images_list[i] for i in valid_indices]
+            inputs = self.processor(
+                text=formatted_texts,
+                images=images_list,
+                padding=True,
+                min_pixels=256 * 28 * 28,
+                max_pixels=512 * 28 * 28,
+                return_tensors="pt",
+            )
 
         labels = inputs["input_ids"].clone()
         for i in range(len(formatted_texts)):
