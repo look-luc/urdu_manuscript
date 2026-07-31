@@ -1,12 +1,8 @@
 import os
+from typing import Dataset as HFDataset
 from typing import cast
 
-from datasets import (
-    Image,
-    IterableDataset,
-    interleave_datasets,
-    load_dataset,
-)
+from datasets import Dataset, Image, IterableDataset, interleave_datasets, load_dataset
 
 # Determine the absolute directory where get_data.py is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,61 +50,164 @@ def is_valid_example(example):
 
 
 def prepare_dataset(ds, select_cols=True) -> IterableDataset:
-    """Enforces column selection, schema casting, and validity filtering before stream conversion."""
+    """Enforces schema casting and converts to IterableDataset BEFORE filtering for instant startup."""
     if select_cols:
         ds = ds.select_columns(["image", "text"])
     ds = ds.cast_column("image", Image(decode=False))
-    ds = ds.filter(is_valid_example)
-    return ds.to_iterable_dataset()
+
+    # Convert to IterableDataset FIRST so .filter() evaluates lazily on active batches
+    iterable_ds = ds.to_iterable_dataset()
+    return iterable_ds.filter(is_valid_example)
 
 
 def get_datasets():
     # --- Arabic ---
-    ds_arabic_raw = load_dataset(
-        "mssqpi/Arabic-OCR-Dataset", split="train", streaming=False, keep_in_memory=False
+    ds_arabic_raw = cast(
+        HFDataset,
+        load_dataset(
+            "mssqpi/Arabic-OCR-Dataset",
+            split="train",
+            streaming=False,
+            keep_in_memory=False,
+        ),
     )
     ds_arabic = prepare_dataset(ds_arabic_raw)
 
     # --- Farsi ---
-    parsynth_train_raw = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=False, keep_in_memory=False).rename_column("image_path", "image")
+    parsynth_train_raw = cast(
+        HFDataset,
+        load_dataset(
+            "hezarai/parsynth-ocr-200k",
+            split="train",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    ).rename_column("image_path", "image")
     parsynth_train = prepare_dataset(parsynth_train_raw)
 
-    parsynth_test_raw = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=False, keep_in_memory=False).rename_column("image_path", "image")
+    parsynth_test_raw = cast(
+        HFDataset,
+        load_dataset(
+            "hezarai/parsynth-ocr-200k",
+            split="test",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    ).rename_column("image_path", "image")
     parsynth_test = prepare_dataset(parsynth_test_raw)
 
     # --- Persian ---
-    persian_ocr_dict = load_dataset("ordaktaktak/Persian-OCR-230k", streaming=False)
+    persian_ocr_dict = load_dataset(
+        "ordaktaktak/Persian-OCR-230k", streaming=False
+    )
 
-    persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image").map(resolve_path, load_from_cache_file=False)
+    persian_ocr_train_raw = (
+        cast(Dataset, persian_ocr_dict["train"])
+        .rename_column("fname", "image")
+        .map(resolve_path)
+    )
     persian_ocr_train = prepare_dataset(persian_ocr_train_raw)
 
-    persian_ocr_test_raw = persian_ocr_dict["test"].rename_column("fname", "image").map(resolve_path, load_from_cache_file=False)
+    persian_ocr_test_raw = (
+        cast(Dataset, persian_ocr_dict["test"])
+        .rename_column("fname", "image")
+        .map(resolve_path)
+    )
     persian_ocr_test = prepare_dataset(persian_ocr_test_raw)
 
     # --- Urdu ---
-    nastaliq_raw = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=False, keep_in_memory=False)
+    nastaliq_raw = cast(
+        HFDataset,
+        load_dataset(
+            "PuristanLabs1/urdu-ocr-1M",
+            "nastaliq",
+            split="train",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     nastaliq = prepare_dataset(nastaliq_raw)
 
-    naskh_raw = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=False, keep_in_memory=False)
+    naskh_raw = cast(
+        HFDataset,
+        load_dataset(
+            "PuristanLabs1/urdu-ocr-1M",
+            "naskh",
+            split="train",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     naskh = prepare_dataset(naskh_raw)
 
-    urdu_news_raw = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=False, keep_in_memory=False)
+    urdu_news_raw = cast(
+        HFDataset,
+        load_dataset(
+            "oddadmix/qari-0.2.2-news-dataset-large",
+            split="train",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     urdu_news = prepare_dataset(urdu_news_raw)
 
-    urdu_news_test_raw = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=False, keep_in_memory=False)
+    urdu_news_test_raw = cast(
+        HFDataset,
+        load_dataset(
+            "oddadmix/qari-0.2.2-news-dataset-large",
+            split="test",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     urdu_news_test = prepare_dataset(urdu_news_test_raw)
 
-    urdu_news_val_raw = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=False, keep_in_memory=False)
+    urdu_news_val_raw = cast(
+        HFDataset,
+        load_dataset(
+            "oddadmix/qari-0.2.2-news-dataset-large",
+            split="validation",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     urdu_news_val = prepare_dataset(urdu_news_val_raw)
 
     # --- Kannada ---
-    kannada_df_train_raw = load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="train", streaming=False, keep_in_memory=False)
+    kannada_df_train_raw = cast(
+        HFDataset,
+        load_dataset(
+            "darknight054/indic-mozhi-ocr",
+            "kannada",
+            split="train",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     kannada_df_train = prepare_dataset(kannada_df_train_raw)
 
-    val_raw = load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="validation", streaming=False, keep_in_memory=False)
+    val_raw = cast(
+        HFDataset,
+        load_dataset(
+            "darknight054/indic-mozhi-ocr",
+            "kannada",
+            split="validation",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     val = prepare_dataset(val_raw)
 
-    test_raw = load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="test", streaming=False, keep_in_memory=False)
+    test_raw = cast(
+        HFDataset,
+        load_dataset(
+            "darknight054/indic-mozhi-ocr",
+            "kannada",
+            split="test",
+            streaming=False,
+            keep_in_memory=False,
+        ),
+    )
     test = prepare_dataset(test_raw)
 
     kannada_df_test = interleave_datasets([val, test])
