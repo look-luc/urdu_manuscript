@@ -114,7 +114,7 @@ class unification_urdu_lang_model:
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
-            min_pixels=256 * 28 * 28,
+            min_pixels=28 * 28,
             max_pixels=512 * 28 * 28,
         )
 

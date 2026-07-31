@@ -38,17 +38,19 @@ def _is_pil_img_duck_typing(obj):
     )
 
 
-def _ensure_min_dimensions(img: Image.Image, min_dim: int = 28) -> Image.Image:
+def _ensure_min_dimensions(
+    img: Image.Image, min_dim: int = 28, max_aspect_ratio: float = 4.0
+) -> Image.Image:
     w, h = img.size
-    if w >= min_dim and h >= min_dim:
+    aspect_ratio = max(w / h, h / w) if h > 0 and w > 0 else 1.0
+
+    if w >= min_dim and h >= min_dim and aspect_ratio <= max_aspect_ratio:
         return img
 
-    new_w = max(w, min_dim)
-    new_h = max(h, min_dim)
-
-    canvas = Image.new("RGB", (new_w, new_h), (255, 255, 255))
-    offset_x = (new_w - w) // 2
-    offset_y = (new_h - h) // 2
+    side = max(w, h, min_dim)
+    canvas = Image.new("RGB", (side, side), (255, 255, 255))
+    offset_x = (side - w) // 2
+    offset_y = (side - h) // 2
     canvas.paste(img, (offset_x, offset_y))
     return canvas
 
@@ -133,12 +135,13 @@ class QwenDataCollator:
                     byte_tensor = torch.frombuffer(
                         bytearray(raw_img["bytes"]), dtype=torch.uint8
                     )
-                    img_obj = to_pil_image(io.decode_image(
-                        byte_tensor,
-                        mode=ImageReadMode.RGB
-                    )).convert("RGB")
+                    img_obj = to_pil_image(
+                        io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
+                    ).convert("RGB")
                 elif "path" in raw_img and raw_img["path"]:
-                    img_obj = self._process_image_path_or_url(str(raw_img["path"]))
+                    img_obj = self._process_image_path_or_url(
+                        str(raw_img["path"])
+                    )
             elif isinstance(raw_img, str):
                 img_obj = self._process_image_path_or_url(raw_img)
             else:
@@ -147,15 +150,19 @@ class QwenDataCollator:
             if img_obj is None:
                 continue
 
-            if _is_pil_image_by_module(img_obj) or _is_pil_img_duck_typing(img_obj):
+            if _is_pil_image_by_module(img_obj) or _is_pil_img_duck_typing(
+                img_obj
+            ):
                 img_obj = img_obj.convert("RGB")
-            elif isinstance(img_obj, torch.Tensor) or hasattr(img_obj, "__array__"):
+            elif isinstance(img_obj, torch.Tensor) or hasattr(
+                img_obj, "__array__"
+            ):
                 img_obj = to_pil_image(img_obj).convert("RGB")
             else:
                 continue
 
-            # Ensure image dimensions are at least 28x28 for spatial patch merging
-            img_obj = _ensure_min_dimensions(img_obj, min_dim=28)
+            # Ensure minimum dimensions and prevent extreme aspect ratio grid collapse
+            img_obj = _ensure_min_dimensions(img_obj, min_dim=28, max_aspect_ratio=4.0)
 
             raw_txt = feature.get("text")
 
