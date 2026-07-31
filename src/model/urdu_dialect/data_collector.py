@@ -1,3 +1,4 @@
+import math
 import os
 
 import requests
@@ -10,11 +11,6 @@ class Data_Collector:
 
     def __init__(self, processor, prompt: str, image_base_dir: str = ""):
         self.processor = processor
-        # Explicitly configure underlying image processor constraints
-        if hasattr(self.processor, "image_processor"):
-            self.processor.image_processor.min_pixels = 256 * 28 * 28
-            self.processor.image_processor.max_pixels = 512 * 28 * 28
-
         self.prompt = prompt
         self.image_base_dir = image_base_dir
         self.pad_token_id = self.processor.tokenizer.pad_token_id
@@ -103,6 +99,37 @@ class Data_Collector:
 
         return None
 
+    def _pad_to_canvas(self, image_pil, min_dim: int = 112, max_aspect: float = 3.0):
+        """Pads high aspect ratio line crops to ensure min spatial patch dimensions."""
+        if image_pil is None:
+            return None
+
+        w, h = image_pil.size
+        if w == 0 or h == 0:
+            return None
+
+        target_w = max(w, min_dim)
+        target_h = max(h, min_dim)
+
+        if target_w / target_h > max_aspect:
+            target_h = math.ceil(target_w / max_aspect)
+        elif target_h / target_w > max_aspect:
+            target_w = math.ceil(target_h / max_aspect)
+
+        pad_w = max(0, target_w - w)
+        pad_h = max(0, target_h - h)
+
+        if pad_w > 0 or pad_h > 0:
+            padding = [
+                pad_w // 2,
+                pad_h // 2,
+                pad_w - (pad_w // 2),
+                pad_h - (pad_h // 2),
+            ]
+            image_pil = F.pad(image_pil, padding=padding, fill=255)
+
+        return image_pil
+
     def __call__(self, features):
         features = [f for f in features if f is not None]
         if not features:
@@ -113,12 +140,8 @@ class Data_Collector:
 
         for feature in features:
             raw_pil = self._load_image(feature.get("image"))
-            if raw_pil is None:
-                continue
-
-            w, h = raw_pil.size
-            # Pre-filter extreme aspect ratios or tiny dimensions that break spatial patching
-            if w < 28 or h < 28 or (w / h > 8.0) or (h / w > 8.0):
+            padded_pil = self._pad_to_canvas(raw_pil, min_dim=112, max_aspect=3.0)
+            if padded_pil is None:
                 continue
 
             message = [
@@ -139,23 +162,23 @@ class Data_Collector:
                 message, tokenize=False, add_generation_prompt=False
             )
 
-            images_list.append(raw_pil)
+            images_list.append(padded_pil)
             formatted_texts.append(text_str)
 
         if not images_list:
-            raise ValueError("All samples in batch failed image loading or dimension checks.")
+            raise ValueError("All samples in batch failed image processing.")
 
-        # Batch call to processor
+        # Batch process with safe min_pixels (4 * 28 * 28 = 3136)
         inputs = self.processor(
             text=formatted_texts,
             images=images_list,
             padding=True,
-            min_pixels=256 * 28 * 28,
+            min_pixels=4 * 28 * 28,
             max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
 
-        # Post-process validation directly on output image_grid_thw tensor
+        # Validate spatial grid tensor
         grid_thw = inputs["image_grid_thw"]
         valid_indices = []
         for idx in range(len(images_list)):
@@ -163,18 +186,16 @@ class Data_Collector:
             if gh >= 2 and gw >= 2 and gh % 2 == 0 and gw % 2 == 0:
                 valid_indices.append(idx)
 
-        if not valid_indices:
-            raise ValueError("No samples in batch satisfied 2x2 grid constraints.")
-
-        # Re-collate batch if invalid samples were pruned
         if len(valid_indices) < len(images_list):
+            if not valid_indices:
+                raise ValueError("No samples in batch satisfied 2x2 grid constraints.")
             formatted_texts = [formatted_texts[i] for i in valid_indices]
             images_list = [images_list[i] for i in valid_indices]
             inputs = self.processor(
                 text=formatted_texts,
                 images=images_list,
                 padding=True,
-                min_pixels=256 * 28 * 28,
+                min_pixels=4 * 28 * 28,
                 max_pixels=512 * 28 * 28,
                 return_tensors="pt",
             )
