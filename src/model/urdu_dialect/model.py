@@ -5,14 +5,11 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-from datasets import Image as HFImage
 from evaluate import load
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoConfig,
     AutoProcessor,
-    BitsAndBytesConfig,
     Qwen2_5_VLForConditionalGeneration,
     Seq2SeqTrainer,
     Seq2SeqTrainingArguments,
@@ -106,34 +103,14 @@ class unification_urdu_lang_model:
         torch.cuda.empty_cache()
         gc.collect()
 
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
-
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
 
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            config=config,
-            quantization_config=bnb_config,
-            device_map={"": 0},
+            device_map=self.device,
             attn_implementation="sdpa",
         )
-        model.config.use_cache = False
-
-        model = prepare_model_for_kbit_training(model)
-
-        peft_config = LoraConfig(
-            r=16,
-            lora_alpha=32,
-            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
-            task_type="CAUSAL_LM",
-        )
-
-        model = get_peft_model(model, peft_config)
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
@@ -143,22 +120,11 @@ class unification_urdu_lang_model:
 
         data = get_datasets()
 
-        for split in data.keys():
-            cols = getattr(data[split], "column_names", None)
-            if cols is not None and "image" in cols:
-                data[split] = data[split].cast_column("image", HFImage())
-
         return model, processor, data
 
     def train(self):
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
-
-        data_collector = Data_Collector(
-            processor=self.processor,
-            prompt=self.prompt,
-            image_base_dir=IMAGE_BASE_DIR,
-        )
 
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
@@ -185,7 +151,6 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=data_collector,
             compute_metrics=self._compute_metrics,
         )
 
