@@ -1,5 +1,4 @@
 import os
-from typing import Dataset as HFDataset
 from typing import cast
 
 from datasets import Dataset, Image, IterableDataset, interleave_datasets, load_dataset
@@ -63,7 +62,7 @@ def prepare_dataset(ds, select_cols=True) -> IterableDataset:
 def get_datasets():
     # --- Arabic ---
     ds_arabic_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "mssqpi/Arabic-OCR-Dataset",
             split="train",
@@ -75,7 +74,7 @@ def get_datasets():
 
     # --- Farsi ---
     parsynth_train_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "hezarai/parsynth-ocr-200k",
             split="train",
@@ -86,7 +85,7 @@ def get_datasets():
     parsynth_train = prepare_dataset(parsynth_train_raw)
 
     parsynth_test_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "hezarai/parsynth-ocr-200k",
             split="test",
@@ -117,7 +116,7 @@ def get_datasets():
 
     # --- Urdu ---
     nastaliq_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "PuristanLabs1/urdu-ocr-1M",
             "nastaliq",
@@ -129,7 +128,7 @@ def get_datasets():
     nastaliq = prepare_dataset(nastaliq_raw)
 
     naskh_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "PuristanLabs1/urdu-ocr-1M",
             "naskh",
@@ -141,7 +140,7 @@ def get_datasets():
     naskh = prepare_dataset(naskh_raw)
 
     urdu_news_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "oddadmix/qari-0.2.2-news-dataset-large",
             split="train",
@@ -152,7 +151,7 @@ def get_datasets():
     urdu_news = prepare_dataset(urdu_news_raw)
 
     urdu_news_test_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "oddadmix/qari-0.2.2-news-dataset-large",
             split="test",
@@ -163,7 +162,7 @@ def get_datasets():
     urdu_news_test = prepare_dataset(urdu_news_test_raw)
 
     urdu_news_val_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "oddadmix/qari-0.2.2-news-dataset-large",
             split="validation",
@@ -175,7 +174,7 @@ def get_datasets():
 
     # --- Kannada ---
     kannada_df_train_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "darknight054/indic-mozhi-ocr",
             "kannada",
@@ -187,7 +186,7 @@ def get_datasets():
     kannada_df_train = prepare_dataset(kannada_df_train_raw)
 
     val_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "darknight054/indic-mozhi-ocr",
             "kannada",
@@ -199,7 +198,7 @@ def get_datasets():
     val = prepare_dataset(val_raw)
 
     test_raw = cast(
-        HFDataset,
+        Dataset,
         load_dataset(
             "darknight054/indic-mozhi-ocr",
             "kannada",
