@@ -6,8 +6,9 @@ from torchvision.io import ImageReadMode
 
 
 class QwenDataCollator:
-    def __init__(self, processor):
+    def __init__(self, processor, prompt):
         self.processor = processor
+        self.prompt = prompt
 
     def _extract_text_string(self, val):
         if isinstance(val, str):
@@ -82,15 +83,30 @@ class QwenDataCollator:
                 formatted_text = self.processor.apply_chat_template(
                     raw_txt, tokenize=False, add_generation_prompt=False
                 )
-            elif isinstance(raw_txt, dict):
-                if "role" in raw_txt:
-                    formatted_text = self.processor.apply_chat_template(
-                        [raw_txt], tokenize=False, add_generation_prompt=False
-                    )
-                else:
-                    formatted_text = self._extract_text_string(raw_txt)
+            elif isinstance(raw_txt, dict) and "role" in raw_txt:
+                formatted_text = self.processor.apply_chat_template(
+                    [raw_txt], tokenize=False, add_generation_prompt=False
+                )
             else:
-                formatted_text = str(raw_txt) if raw_txt is not None else ""
+                target_text = self._extract_text_string(raw_txt)
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image"},
+                            {"type": "text", "text": self.prompt},
+                        ],
+                    },
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": target_text},
+                        ],
+                    },
+                ]
+                formatted_text = self.processor.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=False
+                )
 
             imgs.append(img_obj)
             text_str.append(formatted_text)

@@ -151,7 +151,7 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=QwenDataCollator(self.processor),
+            data_collator=QwenDataCollator(self.processor, prompt=self.prompt),
             compute_metrics=self._compute_metrics,
         )
 
