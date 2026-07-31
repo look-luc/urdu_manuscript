@@ -141,7 +141,7 @@ class unification_urdu_lang_model:
         model = get_peft_model(model, peft_config)
 
         processor = AutoProcessor.from_pretrained(
-            self.model_id, min_pixels=256 * 28 * 28, max_pixels=512 * 28 * 28
+            self.model_id, min_pixels=16 * 28 * 28, max_pixels=512 * 28 * 28
         )
 
         data = get_datasets()

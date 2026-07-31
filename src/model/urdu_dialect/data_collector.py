@@ -1,4 +1,3 @@
-import math
 import os
 
 import requests
@@ -99,8 +98,8 @@ class Data_Collector:
 
         return None
 
-    def _pad_to_canvas(self, image_pil, min_dim: int = 112, max_aspect: float = 3.0):
-        """Pads high aspect ratio line crops to ensure min spatial patch dimensions."""
+    def _pad_to_square(self, image_pil, min_dim: int = 112):
+        """Pads PIL image to a 1:1 square canvas to prevent single-patch dimensions."""
         if image_pil is None:
             return None
 
@@ -108,27 +107,17 @@ class Data_Collector:
         if w == 0 or h == 0:
             return None
 
-        target_w = max(w, min_dim)
-        target_h = max(h, min_dim)
+        side = max(w, h, min_dim)
+        pad_w = side - w
+        pad_h = side - h
 
-        if target_w / target_h > max_aspect:
-            target_h = math.ceil(target_w / max_aspect)
-        elif target_h / target_w > max_aspect:
-            target_w = math.ceil(target_h / max_aspect)
-
-        pad_w = max(0, target_w - w)
-        pad_h = max(0, target_h - h)
-
-        if pad_w > 0 or pad_h > 0:
-            padding = [
-                pad_w // 2,
-                pad_h // 2,
-                pad_w - (pad_w // 2),
-                pad_h - (pad_h // 2),
-            ]
-            image_pil = F.pad(image_pil, padding=padding, fill=255)
-
-        return image_pil
+        padding = [
+            pad_w // 2,
+            pad_h // 2,
+            pad_w - (pad_w // 2),
+            pad_h - (pad_h // 2),
+        ]
+        return F.pad(image_pil, padding=padding, fill=255)
 
     def __call__(self, features):
         features = [f for f in features if f is not None]
@@ -140,8 +129,8 @@ class Data_Collector:
 
         for feature in features:
             raw_pil = self._load_image(feature.get("image"))
-            padded_pil = self._pad_to_canvas(raw_pil, min_dim=112, max_aspect=3.0)
-            if padded_pil is None:
+            square_pil = self._pad_to_square(raw_pil, min_dim=112)
+            if square_pil is None:
                 continue
 
             message = [
@@ -162,23 +151,21 @@ class Data_Collector:
                 message, tokenize=False, add_generation_prompt=False
             )
 
-            images_list.append(padded_pil)
+            images_list.append(square_pil)
             formatted_texts.append(text_str)
 
         if not images_list:
             raise ValueError("All samples in batch failed image processing.")
 
-        # Batch process with safe min_pixels (4 * 28 * 28 = 3136)
         inputs = self.processor(
             text=formatted_texts,
             images=images_list,
             padding=True,
-            min_pixels=4 * 28 * 28,
+            min_pixels=16 * 28 * 28,
             max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
 
-        # Validate spatial grid tensor
         grid_thw = inputs["image_grid_thw"]
         valid_indices = []
         for idx in range(len(images_list)):
@@ -195,7 +182,7 @@ class Data_Collector:
                 text=formatted_texts,
                 images=images_list,
                 padding=True,
-                min_pixels=4 * 28 * 28,
+                min_pixels=16 * 28 * 28,
                 max_pixels=512 * 28 * 28,
                 return_tensors="pt",
             )
