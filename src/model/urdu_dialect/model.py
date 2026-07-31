@@ -9,6 +9,7 @@ import requests
 import torch
 import torchvision.io as tv_io
 import torchvision.transforms.functional as F
+from datasets import Image as HFImage
 from evaluate import load
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
@@ -140,10 +141,14 @@ class unification_urdu_lang_model:
         model = get_peft_model(model, peft_config)
 
         processor = AutoProcessor.from_pretrained(
-            self.model_id, min_pixels=128 * 128, max_pixels=512 * 28 * 28
+            self.model_id, min_pixels=256 * 28 * 28, max_pixels=512 * 28 * 28
         )
 
         data = get_datasets()
+
+        for split in data.keys():
+            if "image" in data[split].column_names:
+                data[split] = data[split].cast_column("image", HFImage())
 
         return model, processor, data
 
@@ -243,42 +248,12 @@ class unification_urdu_lang_model:
 
         return image_pil
 
-    def _is_valid_example(self, example):
-        """Dedicated upstream filter to validate grid structures."""
-        image_pil = self._load_image(example)
-        if image_pil is None:
-            return False
-
-        try:
-            # Test run the visual part of the processor to check dimensions
-            inputs = self.processor(
-                images=[image_pil],
-                min_pixels=128 * 128,
-                max_pixels=512 * 28 * 28,
-                return_tensors="pt"
-            )
-
-            grid_thw = inputs["image_grid_thw"]
-            while grid_thw.dim() > 2:
-                grid_thw = grid_thw.squeeze(0)
-            if grid_thw.dim() == 1:
-                grid_thw = grid_thw.unsqueeze(0)
-
-            grid_h = grid_thw[0][1]
-            grid_w = grid_thw[0][2]
-
-            if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
-                return False
-
-            return True
-        except Exception:
-            return False
-
     def _process(self, example):
-        image_pil = self._load_image(example)
-
-        if image_pil is None:
-            raise ValueError(f"Could not load PIL image for sample: {example}")
+        try:
+            # Native PIL image decoding provided by Hugging Face Datasets
+            image_pil = example["image"].convert("RGB")
+        except Exception:
+            return {"is_valid": False}
 
         message = [
             {
@@ -303,27 +278,29 @@ class unification_urdu_lang_model:
             images=[image_pil],
             padding=False,
             max_length=1024,
-            min_pixels=128 * 128,
+            min_pixels=256 * 28 * 28,
             max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
 
         pixel_values = inputs["pixel_values"]
-
         while pixel_values.dim() > 2:
             pixel_values = pixel_values.squeeze(0)
         if pixel_values.dim() == 1:
             pixel_values = pixel_values.unsqueeze(0)
 
         grid_thw = inputs["image_grid_thw"]
-
         while grid_thw.dim() > 2:
             grid_thw = grid_thw.squeeze(0)
         if grid_thw.dim() == 1:
             grid_thw = grid_thw.unsqueeze(0)
 
+        grid_h = grid_thw[0][1].item()
+        grid_w = grid_thw[0][2].item()
+
+        # Check Qwen2.5-VL minimum 2x2 patch requirement directly inline
         is_valid = True
-        if grid_thw.numel() == 0 or (grid_thw == 0).any():
+        if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
             is_valid = False
 
         return {
@@ -331,7 +308,7 @@ class unification_urdu_lang_model:
             "attention_mask": inputs["attention_mask"].squeeze(0),
             "pixel_values": pixel_values,
             "image_grid_thw": grid_thw,
-            "is_valid": is_valid
+            "is_valid": is_valid,
         }
 
     def train(self):
@@ -340,17 +317,14 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        # Filter the dataset before mapping to drop edge-cases early
-        print("Filtering train dataset for valid image structures...")
-        filtered_train = train_dataset.filter(self._is_valid_example)
-        print("Filtering test dataset for valid image structures...")
-        filtered_test = test_dataset.filter(self._is_valid_example)
+        train_cols = getattr(train_dataset, "column_names", None)
+        test_cols = getattr(test_dataset, "column_names", None)
 
-        train_cols = getattr(filtered_train, "column_names", None)
-        test_cols = getattr(filtered_test, "column_names", None)
+        processed_train = train_dataset.map(self._process, remove_columns=train_cols)
+        processed_test = test_dataset.map(self._process, remove_columns=test_cols)
 
-        processed_train = filtered_train.map(self._process, remove_columns=train_cols)
-        processed_test = filtered_test.map(self._process, remove_columns=test_cols)
+        processed_train = processed_train.filter(lambda x: x["is_valid"])
+        processed_test = processed_test.filter(lambda x: x["is_valid"])
 
         try:
             next(iter(processed_train))
@@ -363,7 +337,6 @@ class unification_urdu_lang_model:
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
 
-        CPUS_ALLOCATED = 8
 
         training_args = Seq2SeqTrainingArguments(
             output_dir="./results",
