@@ -99,12 +99,12 @@ class Data_Collector:
         return None
 
     def _prep_image(self, image_pil):
-        """Ensures image dimensions are >= 56px and aspect ratio is safe so grid_h/w >= 2."""
+        """Ensures canvas is at least 112x112 so Qwen's grid_h and grid_w stay >= 2."""
         if image_pil is None:
             return None
 
         w, h = image_pil.size
-        min_dim = 56
+        min_dim = 112
         max_aspect = 8.0
 
         target_w = max(w, min_dim)
@@ -171,6 +171,8 @@ class Data_Collector:
             text=formatted_texts,
             images=images_list,
             padding=True,
+            min_pixels=256 * 28 * 28,
+            max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
 
