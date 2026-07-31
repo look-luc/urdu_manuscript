@@ -1,4 +1,3 @@
-import math
 import os
 
 import requests
@@ -99,38 +98,6 @@ class Data_Collector:
 
         return None
 
-    def _prep_image(self, image_pil):
-        """Pads canvas to ensure total pixels >= min_pixels and dimensions are multiples of 56px."""
-        if image_pil is None:
-            return None
-
-        w, h = image_pil.size
-        min_pixels = 256 * 28 * 28  # 200,704 px
-        factor = 56  # 2 * patch_size (28) guarantees even grid patch counts
-
-        aspect_ratio = w / h
-        target_area = max(w * h, min_pixels)
-
-        target_h = math.sqrt(target_area / aspect_ratio)
-        target_w = target_h * aspect_ratio
-
-        final_w = math.ceil(target_w / factor) * factor
-        final_h = math.ceil(target_h / factor) * factor
-
-        pad_w = max(0, final_w - w)
-        pad_h = max(0, final_h - h)
-
-        if pad_w > 0 or pad_h > 0:
-            padding = [
-                pad_w // 2,
-                pad_h // 2,
-                pad_w - (pad_w // 2),
-                pad_h - (pad_h // 2),
-            ]
-            image_pil = F.pad(image_pil, padding=padding, fill=255)
-
-        return image_pil
-
     def __call__(self, features):
         features = [f for f in features if f is not None]
         if not features:
@@ -141,8 +108,7 @@ class Data_Collector:
 
         for feature in features:
             raw_pil = self._load_image(feature.get("image"))
-            image_pil = self._prep_image(raw_pil)
-            if image_pil is None:
+            if raw_pil is None:
                 continue
 
             message = [
@@ -163,11 +129,28 @@ class Data_Collector:
                 message, tokenize=False, add_generation_prompt=False
             )
 
-            images_list.append(image_pil)
+            # Test-process the sample to inspect the output image_grid_thw dimensions
+            test_inputs = self.processor(
+                text=[text_str],
+                images=[raw_pil],
+                padding=False,
+                min_pixels=256 * 28 * 28,
+                max_pixels=512 * 28 * 28,
+                return_tensors="pt",
+            )
+
+            grid_thw = test_inputs["image_grid_thw"][0]
+            grid_h, grid_w = grid_thw[1].item(), grid_thw[2].item()
+
+            # Skip samples that break spatial 2x2 patch merging
+            if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
+                continue
+
+            images_list.append(raw_pil)
             formatted_texts.append(text_str)
 
         if not images_list:
-            raise ValueError("All samples in batch failed image loading.")
+            raise ValueError("All samples in batch failed image loading or grid validation.")
 
         inputs = self.processor(
             text=formatted_texts,
