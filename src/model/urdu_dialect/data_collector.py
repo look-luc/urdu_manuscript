@@ -6,6 +6,12 @@ import torchvision.io as io
 from torchvision.io import ImageReadMode
 from torchvision.transforms.functional import to_pil_image
 
+try:
+    from qwen_vl_utils import process_vision_info
+    HAS_QWEN_UTILS = True
+except ImportError:
+    HAS_QWEN_UTILS = False
+
 
 def _is_pil_image_by_module(obj):
     if obj is None or isinstance(obj, dict):
@@ -83,15 +89,18 @@ class QwenDataCollator:
     def _bind_image_to_messages(self, raw_txt, img_obj):
         messages = copy.deepcopy(raw_txt)
         for msg in messages:
-            if isinstance(msg, dict) and isinstance(msg.get("content"), list):
-                for item in msg["content"]:
-                    if isinstance(item, dict) and item.get("type") == "image":
-                        item["image"] = img_obj
+            if isinstance(msg, dict):
+                content = msg.get("content")
+                if isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "image":
+                            item["image"] = img_obj
         return messages
 
     def __call__(self, features):
         text_str = []
         imgs = []
+        batch_messages = []
 
         for feature in features:
             raw_img = (
@@ -133,11 +142,6 @@ class QwenDataCollator:
 
             if self._has_image_content(raw_txt):
                 messages = self._bind_image_to_messages(raw_txt, img_obj)
-                formatted_text = self.processor.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=False,
-                )
             else:
                 target_text = self._extract_text_string(raw_txt)
                 messages = [
@@ -155,21 +159,33 @@ class QwenDataCollator:
                         ],
                     },
                 ]
-                formatted_text = self.processor.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=False,
-                )
 
-            imgs.append([img_obj])
+            formatted_text = self.processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+
+            imgs.append(img_obj)
             text_str.append(formatted_text)
+            batch_messages.append(messages)
 
-        batch = self.processor(
-            images=imgs,
-            text=text_str,
-            padding=True,
-            return_tensors="pt",
-        )
+        if HAS_QWEN_UTILS:
+            image_inputs, video_inputs = process_vision_info(batch_messages)
+            batch = self.processor(
+                text=text_str,
+                images=image_inputs,
+                videos=video_inputs,
+                padding=True,
+                return_tensors="pt",
+            )
+        else:
+            batch = self.processor(
+                text=text_str,
+                images=imgs,
+                padding=True,
+                return_tensors="pt",
+            )
 
         labels = batch["input_ids"].clone()
         labels[labels == self.processor.tokenizer.pad_token_id] = -100
