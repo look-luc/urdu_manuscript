@@ -99,21 +99,23 @@ class Data_Collector:
         return None
 
     def _prep_image(self, image_pil):
-        """Ensures canvas is at least 112x112 so Qwen's grid_h and grid_w stay >= 2."""
+        """Pads image to ensure grid height and grid width are >= 2 and even for Qwen2.5-VL patch merging."""
         if image_pil is None:
             return None
 
         w, h = image_pil.size
-        min_dim = 112
-        max_aspect = 8.0
+        patch_size = 28
 
-        target_w = max(w, min_dim)
-        target_h = max(h, min_dim)
+        grid_w = max(2, (w + patch_size - 1) // patch_size)
+        grid_h = max(2, (h + patch_size - 1) // patch_size)
 
-        if target_w / target_h > max_aspect:
-            target_h = int(target_w / max_aspect)
-        elif target_h / target_w > max_aspect:
-            target_w = int(target_h / max_aspect)
+        if grid_w % 2 != 0:
+            grid_w += 1
+        if grid_h % 2 != 0:
+            grid_h += 1
+
+        target_w = grid_w * patch_size
+        target_h = grid_h * patch_size
 
         pad_w = max(0, target_w - w)
         pad_h = max(0, target_h - h)
