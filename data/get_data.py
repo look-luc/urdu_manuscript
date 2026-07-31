@@ -4,15 +4,15 @@ from typing import cast
 from datasets import (
     Image,
     IterableDataset,
-    concatenate_datasets,
     interleave_datasets,
     load_dataset,
 )
 
-# Determine the absolute directory where get_data.py is located (/projects/.../urdu_manuscript/data)
+# Determine the absolute directory where get_data.py is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Build the absolute path to the images directory regardless of where run.py is executed from
+# Build the absolute path to the images directory
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
+
 
 def resolve_path(example):
     image_val = example.get("image")
@@ -28,131 +28,121 @@ def resolve_path(example):
 
     return example
 
-def force_image_schema(ds):
-    """Ensures the dataset has an 'image' feature of type Image without premature decoding."""
-    return ds.cast_column("image", Image(decode=False))
+
+def is_valid_example(example):
+    """Filters out empty text, null images, and non-existent local image paths."""
+    img = example.get("image")
+    txt = example.get("text")
+
+    if img is None or txt is None:
+        return False
+
+    # Verify text is not blank filler
+    if isinstance(txt, str) and not txt.strip():
+        return False
+
+    # Check local path validity if string/dict path is present
+    if isinstance(img, dict) and "path" in img and img["path"]:
+        path_str = str(img["path"])
+        if not path_str.startswith(("http://", "https://")) and not os.path.exists(path_str):
+            return False
+    elif isinstance(img, str) and not img.startswith(("http://", "https://")):
+        if not os.path.exists(img):
+            return False
+
+    return True
+
+
+def prepare_dataset(ds, select_cols=True) -> IterableDataset:
+    """Enforces column selection, schema casting, and validity filtering before stream conversion."""
+    if select_cols:
+        ds = ds.select_columns(["image", "text"])
+    ds = ds.cast_column("image", Image(decode=False))
+    ds = ds.filter(is_valid_example)
+    return ds.to_iterable_dataset()
+
 
 def get_datasets():
     # --- Arabic ---
-    ds_arabic: IterableDataset = load_dataset(
+    ds_arabic_raw = load_dataset(
         "mssqpi/Arabic-OCR-Dataset", split="train", streaming=False, keep_in_memory=False
-    ).to_iterable_dataset()
+    )
+    ds_arabic = prepare_dataset(ds_arabic_raw)
 
     # --- Farsi ---
-    parsynth_train_load = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=False, keep_in_memory=False)
-    parsynth_train_raw = parsynth_train_load.rename_column("image_path", "image")
-    parsynth_train: IterableDataset = force_image_schema(parsynth_train_raw.select_columns(["image", "text"])).to_iterable_dataset()
+    parsynth_train_raw = load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=False, keep_in_memory=False).rename_column("image_path", "image")
+    parsynth_train = prepare_dataset(parsynth_train_raw)
 
-    parsynth_test_load = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=False, keep_in_memory=False)
-    parsynth_test_raw = parsynth_test_load.rename_column("image_path", "image")
-    parsynth_test: IterableDataset = force_image_schema(parsynth_test_raw.select_columns(["image", "text"])).to_iterable_dataset()
+    parsynth_test_raw = load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=False, keep_in_memory=False).rename_column("image_path", "image")
+    parsynth_test = prepare_dataset(parsynth_test_raw)
 
     # --- Persian ---
     persian_ocr_dict = load_dataset("ordaktaktak/Persian-OCR-230k", streaming=False)
 
-    persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image")
-    persian_ocr_train_mapped = persian_ocr_train_raw.map(resolve_path, load_from_cache_file=False)
-    persian_ocr_train: IterableDataset = force_image_schema(persian_ocr_train_mapped.select_columns(["image", "text"])).to_iterable_dataset()
+    persian_ocr_train_raw = persian_ocr_dict["train"].rename_column("fname", "image").map(resolve_path, load_from_cache_file=False)
+    persian_ocr_train = prepare_dataset(persian_ocr_train_raw)
 
-    persian_ocr_test_raw = persian_ocr_dict["test"].rename_column("fname", "image")
-    persian_ocr_test_mapped = persian_ocr_test_raw.map(resolve_path, load_from_cache_file=False)
-    persian_ocr_test: IterableDataset = force_image_schema(persian_ocr_test_mapped.select_columns(["image", "text"])).to_iterable_dataset()
+    persian_ocr_test_raw = persian_ocr_dict["test"].rename_column("fname", "image").map(resolve_path, load_from_cache_file=False)
+    persian_ocr_test = prepare_dataset(persian_ocr_test_raw)
 
     # --- Urdu ---
-    nastaliq: IterableDataset = load_dataset(
-        "PuristanLabs1/urdu-ocr-1M",
-        "nastaliq",
-        split="train",
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    nastaliq_raw = load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=False, keep_in_memory=False)
+    nastaliq = prepare_dataset(nastaliq_raw)
 
-    naskh: IterableDataset = load_dataset(
-        "PuristanLabs1/urdu-ocr-1M",
-        "naskh",
-        split="train",
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    naskh_raw = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=False, keep_in_memory=False)
+    naskh = prepare_dataset(naskh_raw)
 
-    urdu_news: IterableDataset = load_dataset(
-        "oddadmix/qari-0.2.2-news-dataset-large",
-        split="train",
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    urdu_news_raw = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=False, keep_in_memory=False)
+    urdu_news = prepare_dataset(urdu_news_raw)
 
-    urdu_news_test: IterableDataset = load_dataset(
-        "oddadmix/qari-0.2.2-news-dataset-large",
-        split="test",
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    urdu_news_test_raw = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=False, keep_in_memory=False)
+    urdu_news_test = prepare_dataset(urdu_news_test_raw)
 
-    urdu_news_val: IterableDataset = load_dataset(
-        "oddadmix/qari-0.2.2-news-dataset-large",
-        split="validation",
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    urdu_news_val_raw = load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=False, keep_in_memory=False)
+    urdu_news_val = prepare_dataset(urdu_news_val_raw)
 
     # --- Kannada ---
-    kannada_df_train: IterableDataset = load_dataset(
-        "darknight054/indic-mozhi-ocr",
-        "kannada",
-        split='train',
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    kannada_df_train_raw = load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="train", streaming=False, keep_in_memory=False)
+    kannada_df_train = prepare_dataset(kannada_df_train_raw)
 
-    val: IterableDataset = load_dataset(
-        "darknight054/indic-mozhi-ocr",
-        "kannada",
-        split='validation',
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    val_raw = load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="validation", streaming=False, keep_in_memory=False)
+    val = prepare_dataset(val_raw)
 
-    test: IterableDataset = load_dataset(
-        "darknight054/indic-mozhi-ocr",
-        "kannada",
-        split='test',
-        streaming=False,
-        keep_in_memory=False
-    ).select_columns(["image", "text"]).to_iterable_dataset()
+    test_raw = load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="test", streaming=False, keep_in_memory=False)
+    test = prepare_dataset(test_raw)
 
     kannada_df_test = interleave_datasets([val, test])
 
     # --- Slicing & Interleaving ---
     test_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.take(600)),
-            force_image_schema(nastaliq.take(600)),
-            force_image_schema(naskh.take(600)),
-            force_image_schema(urdu_news_test),
+            ds_arabic.take(600),
+            nastaliq.take(600),
+            naskh.take(600),
+            urdu_news_test,
             parsynth_test,
             persian_ocr_test,
-            force_image_schema(urdu_news_val),
-            force_image_schema(kannada_df_test)
+            urdu_news_val,
+            kannada_df_test,
         ],
-        seed=42
+        seed=42,
     )
 
     train_dataset = interleave_datasets(
         [
-            force_image_schema(ds_arabic.skip(600)),
-            force_image_schema(nastaliq.skip(600)),
-            force_image_schema(naskh.skip(600)),
-            force_image_schema(urdu_news),
+            ds_arabic.skip(600),
+            nastaliq.skip(600),
+            naskh.skip(600),
+            urdu_news,
             parsynth_train,
             persian_ocr_train,
-            force_image_schema(kannada_df_train)
+            kannada_df_train,
         ],
         seed=42,
-        stopping_strategy="all_exhausted"
+        stopping_strategy="all_exhausted",
     )
 
     return {
         "train": train_dataset,
-        "test": test_dataset
+        "test": test_dataset,
     }
