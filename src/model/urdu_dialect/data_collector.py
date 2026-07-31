@@ -1,3 +1,5 @@
+import urllib.request
+
 import torch
 import torchvision.io as io
 from torchvision.io import ImageReadMode
@@ -20,6 +22,26 @@ class QwenDataCollator:
                 if key in val:
                     return self._extract_text_string(val[key])
         return str(val) if val is not None else ""
+
+    def _fetch_url_bytes(self, url: str) -> bytes:
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req) as response:
+            return response.read()
+
+    def _process_image_path_or_url(self, path_str: str):
+        if path_str.startswith(("http://", "https://")):
+            url_bytes = self._fetch_url_bytes(path_str)
+            byte_tensor = torch.frombuffer(url_bytes, dtype=torch.uint8)
+            return io.decode_image(
+                byte_tensor, mode=ImageReadMode.RGB
+            ).permute(1, 2, 0)
+        else:
+            return io.read_image(
+                path_str, mode=ImageReadMode.RGB
+            ).permute(1, 2, 0)
 
     def __call__(self, features):
         text_str = []
@@ -44,17 +66,11 @@ class QwenDataCollator:
                         mode=ImageReadMode.RGB
                     ).permute(1, 2, 0)
                 elif "path" in raw_img and raw_img["path"]:
-                    img_obj = io.read_image(
-                        str(raw_img["path"]),
-                        mode=ImageReadMode.RGB
-                    ).permute(1, 2, 0)
+                    img_obj = self._process_image_path_or_url(str(raw_img["path"]))
                 else:
                     img_obj = raw_img
             elif isinstance(raw_img, str):
-                img_obj = io.read_image(
-                    raw_img,
-                    mode=ImageReadMode.RGB
-                ).permute(1, 2, 0)
+                img_obj = self._process_image_path_or_url(raw_img)
             else:
                 img_obj = raw_img
 
