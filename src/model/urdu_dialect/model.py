@@ -260,6 +260,22 @@ class unification_urdu_lang_model:
             return_tensors="pt",
         )
 
+        grid_thw = inputs["image_grid_thw"]
+
+        while grid_thw.dim() > 2:
+            grid_thw = grid_thw.squeeze(0)
+        if grid_thw.dim() == 1:
+            grid_thw = grid_thw.unsqueeze(0)
+
+        try:
+            grid_h = grid_thw[0][1]
+            grid_w = grid_thw[0][2]
+        except IndexError:
+            return {"is_valid": False}
+
+        if grid_h < 2 or grid_w < 2:
+            return {"is_valid": False}
+
         return {
             "input_ids": inputs["input_ids"].squeeze(0),
             "attention_mask": inputs["attention_mask"].squeeze(0),

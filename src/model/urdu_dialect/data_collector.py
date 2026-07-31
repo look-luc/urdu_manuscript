@@ -10,6 +10,9 @@ class Data_Collector:
         )
 
     def __call__(self, features):
+        if not features:
+            raise ValueError("Empty batch or all samples failed validation")
+
         features = [
             f for f in features if f is not None and f.get("is_valid", False)
         ]
