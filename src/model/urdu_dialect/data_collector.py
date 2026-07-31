@@ -1,66 +1,151 @@
+import os
+
+import requests
 import torch
+import torchvision.io as tv_io
+import torchvision.transforms.functional as F
 
 
 class Data_Collector:
-    def __init__(self, processor):
+
+    def __init__(self, processor, prompt: str, image_base_dir: str = ""):
         self.processor = processor
+        self.prompt = prompt
+        self.image_base_dir = image_base_dir
         self.pad_token_id = self.processor.tokenizer.pad_token_id
         self.assistant_start_token = self.processor.tokenizer.encode(
             "<|im_start|>assistant\n", add_special_tokens=False
         )
 
-    def __call__(self, features):
-        if not features:
-            raise ValueError("Empty batch or all samples failed validation")
+    def _is_valid_header(self, bytes_data):
+        if len(bytes_data) < 4:
+            return False
+        if (
+            bytes_data[0] == 0xFF
+            and bytes_data[1] == 0xD8
+            and bytes_data[2] == 0xFF
+        ):
+            return True
+        elif (
+            bytes_data[0] == 0x89
+            and bytes_data[1] == 0x50
+            and bytes_data[2] == 0x4E
+            and bytes_data[3] == 0x47
+        ):
+            return True
+        return False
 
-        features = [
-            f for f in features if f is not None and f.get("is_valid", False)
-        ]
-        if len(features) == 0:
-            raise ValueError(
-                "Data_Collector received an empty batch or all samples in the batch failed validation."
+    def _load_image(self, image_input):
+        if hasattr(image_input, "convert"):
+            return image_input.convert("RGB")
+
+        if isinstance(image_input, dict):
+            if image_input.get("bytes") is not None:
+                raw_bytes = image_input["bytes"]
+                if not self._is_valid_header(raw_bytes):
+                    return None
+                storage_tensor = torch.frombuffer(
+                    bytearray(raw_bytes), dtype=torch.uint8
+                )
+                image_tensor = tv_io.decode_image(
+                    storage_tensor, mode=tv_io.ImageReadMode.RGB
+                )
+                return F.to_pil_image(image_tensor)
+
+            elif image_input.get("path") is not None:
+                image_path = image_input["path"]
+                if image_path.startswith(("http://", "https://")):
+                    response = requests.get(image_path, timeout=10)
+                    if response.status_code != 200:
+                        return None
+                    storage_tensor = torch.frombuffer(
+                        bytearray(response.content), dtype=torch.uint8
+                    )
+                    image_tensor = tv_io.decode_image(
+                        storage_tensor, mode=tv_io.ImageReadMode.RGB
+                    )
+                    return F.to_pil_image(image_tensor)
+                else:
+                    if not os.path.isabs(image_path) and self.image_base_dir:
+                        image_path = os.path.join(
+                            self.image_base_dir, image_path
+                        )
+                    image_tensor = tv_io.read_image(
+                        image_path, mode=tv_io.ImageReadMode.RGB
+                    )
+                    return F.to_pil_image(image_tensor)
+
+        elif isinstance(image_input, str):
+            image_path = image_input
+            if image_path.startswith(("http://", "https://")):
+                response = requests.get(image_path, timeout=10)
+                if response.status_code != 200:
+                    return None
+                storage_tensor = torch.frombuffer(
+                    bytearray(response.content), dtype=torch.uint8
+                )
+                image_tensor = tv_io.decode_image(
+                    storage_tensor, mode=tv_io.ImageReadMode.RGB
+                )
+                return F.to_pil_image(image_tensor)
+            else:
+                if not os.path.isabs(image_path) and self.image_base_dir:
+                    image_path = os.path.join(self.image_base_dir, image_path)
+                image_tensor = tv_io.read_image(
+                    image_path, mode=tv_io.ImageReadMode.RGB
+                )
+                return F.to_pil_image(image_tensor)
+
+        return None
+
+    def __call__(self, features):
+        features = [f for f in features if f is not None]
+        if not features:
+            raise ValueError("Data_Collector received an empty batch.")
+
+        images_list = []
+        formatted_texts = []
+
+        for feature in features:
+            image_pil = self._load_image(feature.get("image"))
+            if image_pil is None:
+                continue
+
+            message = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": feature["text"]}],
+                },
+            ]
+
+            text_str = self.processor.apply_chat_template(
+                message, tokenize=False, add_generation_prompt=False
             )
 
-        input_ids_list = [feature["input_ids"] for feature in features]
-        attention_mask_list = [
-            feature["attention_mask"] for feature in features
-        ]
-        padded_text = self.processor.tokenizer.pad(
-            {
-                "input_ids": input_ids_list,
-                "attention_mask": attention_mask_list,
-            },
+            images_list.append(image_pil)
+            formatted_texts.append(text_str)
+
+        if not images_list:
+            raise ValueError("All samples in batch failed image loading.")
+
+        inputs = self.processor(
+            text=formatted_texts,
+            images=images_list,
             padding=True,
+            min_pixels=256 * 28 * 28,
+            max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
 
-        pixel_values_list = []
-        image_grid_thw_list = []
-        for feature in features:
-            pixels = feature["pixel_values"]
-            grid_thw = feature["image_grid_thw"]
-
-            while pixels.dim() > 2:
-                pixels = pixels.squeeze(0)
-            if pixels.dim() == 1:
-                pixels = pixels.unsqueeze(0)
-
-            while grid_thw.dim() > 2:
-                grid_thw = grid_thw.squeeze(0)
-            if grid_thw.dim() == 1:
-                grid_thw = grid_thw.unsqueeze(0)
-
-            pixel_values_list.append(pixels)
-            image_grid_thw_list.append(grid_thw)
-
-        pixel_values = torch.cat(pixel_values_list, dim=0)
-        image_grid_thw = torch.cat(image_grid_thw_list, dim=0)
-
-        if image_grid_thw.dim() == 3 and image_grid_thw.size(1) == 1:
-            image_grid_thw = image_grid_thw.squeeze(1)
-
-        labels = padded_text["input_ids"].clone()
-        for i in range(len(features)):
+        labels = inputs["input_ids"].clone()
+        for i in range(len(formatted_texts)):
             row_labels = labels[i]
             for row in range(
                 len(row_labels) - len(self.assistant_start_token) + 1
@@ -73,12 +158,12 @@ class Data_Collector:
                 ):
                     labels[i, : row + len(self.assistant_start_token)] = -100
                     break
-        labels[padded_text["input_ids"] == self.pad_token_id] = -100
+        labels[inputs["input_ids"] == self.pad_token_id] = -100
 
         return {
-            "input_ids": padded_text["input_ids"],
-            "attention_mask": padded_text["attention_mask"],
+            "input_ids": inputs["input_ids"],
+            "attention_mask": inputs["attention_mask"],
             "labels": labels,
-            "pixel_values": pixel_values.bfloat16(),
-            "image_grid_thw": image_grid_thw,
+            "pixel_values": inputs["pixel_values"].bfloat16(),
+            "image_grid_thw": inputs["image_grid_thw"],
         }

@@ -349,22 +349,12 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        train_cols = getattr(train_dataset, "column_names", None)
-        test_cols = getattr(test_dataset, "column_names", None)
-
-        processed_train = train_dataset.map(self._process, remove_columns=train_cols)
-        processed_test = test_dataset.map(self._process, remove_columns=test_cols)
-
-        processed_train = processed_train.filter(lambda x: x["is_valid"])
-        processed_test = processed_test.filter(lambda x: x["is_valid"])
-
-        try:
-            next(iter(processed_train))
-            print("Successfully verified active stream for processed_train.")
-        except StopIteration:
-            raise ValueError("processed_train iterator is empty!")
-
-        data_collector = Data_Collector(processor=self.processor)
+        # Pass prompt and image base directory to Data_Collector
+        data_collector = Data_Collector(
+            processor=self.processor,
+            prompt=self.prompt,
+            image_base_dir=IMAGE_BASE_DIR,
+        )
 
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
@@ -375,7 +365,7 @@ class unification_urdu_lang_model:
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=4,
             num_train_epochs=1,
-            dataloader_num_workers=4,
+            dataloader_num_workers=0,  # Recommended when loading images inside collator
             learning_rate=2e-5,
             max_steps=2500,
             eval_strategy="steps",
@@ -389,8 +379,8 @@ class unification_urdu_lang_model:
         trainer = Seq2SeqTrainer(
             model=self.model,
             args=training_args,
-            train_dataset=processed_train,
-            eval_dataset=processed_test,
+            train_dataset=train_dataset,
+            eval_dataset=test_dataset,
             data_collator=data_collector,
             compute_metrics=self._compute_metrics,
         )
