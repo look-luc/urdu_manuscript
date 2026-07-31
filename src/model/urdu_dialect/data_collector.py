@@ -59,6 +59,9 @@ class Data_Collector:
         pixel_values = torch.cat(pixel_values_list, dim=0)
         image_grid_thw = torch.cat(image_grid_thw_list, dim=0)
 
+        if pixel_values.dim() > 2:
+            pixel_values = pixel_values.view(-1, pixel_values.shape[-1])
+
         labels = padded_text["input_ids"].clone()
         for i in range(len(features)):
             row_labels = labels[i]
