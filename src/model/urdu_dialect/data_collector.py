@@ -3,6 +3,7 @@ import urllib.request
 
 import torch
 import torchvision.io as io
+from PIL import Image
 from torchvision.io import ImageReadMode
 from torchvision.transforms.functional import to_pil_image
 
@@ -35,6 +36,21 @@ def _is_pil_img_duck_typing(obj):
         and hasattr(obj, "size")
         and hasattr(obj, "mode")
     )
+
+
+def _ensure_min_dimensions(img: Image.Image, min_dim: int = 28) -> Image.Image:
+    w, h = img.size
+    if w >= min_dim and h >= min_dim:
+        return img
+
+    new_w = max(w, min_dim)
+    new_h = max(h, min_dim)
+
+    canvas = Image.new("RGB", (new_w, new_h), (255, 255, 255))
+    offset_x = (new_w - w) // 2
+    offset_y = (new_h - h) // 2
+    canvas.paste(img, (offset_x, offset_y))
+    return canvas
 
 
 class QwenDataCollator:
@@ -137,6 +153,9 @@ class QwenDataCollator:
                 img_obj = to_pil_image(img_obj).convert("RGB")
             else:
                 continue
+
+            # Ensure image dimensions are at least 28x28 for spatial patch merging
+            img_obj = _ensure_min_dimensions(img_obj, min_dim=28)
 
             raw_txt = feature.get("text")
 
