@@ -60,7 +60,7 @@ class QwenDataCollator:
     def _process_image_path_or_url(self, path_str: str):
         if path_str.startswith(("http://", "https://")):
             url_bytes = self._fetch_url_bytes(path_str)
-            byte_tensor = torch.frombuffer(url_bytes, dtype=torch.uint8)
+            byte_tensor = torch.frombuffer(bytearray(url_bytes), dtype=torch.uint8)
             img = to_pil_image(io.decode_image(
                 byte_tensor, mode=ImageReadMode.RGB
             ))
@@ -96,7 +96,7 @@ class QwenDataCollator:
             if isinstance(raw_img, dict):
                 if "bytes" in raw_img and raw_img["bytes"]:
                     byte_tensor = torch.frombuffer(
-                        raw_img["bytes"], dtype=torch.uint8
+                        bytearray(raw_img["bytes"]), dtype=torch.uint8
                     )
                     img_obj = to_pil_image(io.decode_image(
                         byte_tensor,
@@ -124,7 +124,6 @@ class QwenDataCollator:
             if self._has_image_content(raw_txt):
                 formatted_text = self.processor.apply_chat_template(
                     raw_txt,
-                    images=[img_obj],
                     tokenize=False,
                     add_generation_prompt=False,
                 )
@@ -147,7 +146,6 @@ class QwenDataCollator:
                 ]
                 formatted_text = self.processor.apply_chat_template(
                     messages,
-                    images=[img_obj],
                     tokenize=False,
                     add_generation_prompt=False,
                 )
