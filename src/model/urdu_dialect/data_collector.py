@@ -98,6 +98,37 @@ class Data_Collector:
 
         return None
 
+    def _prep_image(self, image_pil):
+        """Ensures image dimensions are >= 56px and aspect ratio is safe so grid_h/w >= 2."""
+        if image_pil is None:
+            return None
+
+        w, h = image_pil.size
+        min_dim = 56
+        max_aspect = 8.0
+
+        target_w = max(w, min_dim)
+        target_h = max(h, min_dim)
+
+        if target_w / target_h > max_aspect:
+            target_h = int(target_w / max_aspect)
+        elif target_h / target_w > max_aspect:
+            target_w = int(target_h / max_aspect)
+
+        pad_w = max(0, target_w - w)
+        pad_h = max(0, target_h - h)
+
+        if pad_w > 0 or pad_h > 0:
+            padding = [
+                pad_w // 2,
+                pad_h // 2,
+                pad_w - (pad_w // 2),
+                pad_h - (pad_h // 2),
+            ]
+            image_pil = F.pad(image_pil, padding=padding, fill=255)
+
+        return image_pil
+
     def __call__(self, features):
         features = [f for f in features if f is not None]
         if not features:
@@ -107,7 +138,8 @@ class Data_Collector:
         formatted_texts = []
 
         for feature in features:
-            image_pil = self._load_image(feature.get("image"))
+            raw_pil = self._load_image(feature.get("image"))
+            image_pil = self._prep_image(raw_pil)
             if image_pil is None:
                 continue
 
@@ -139,8 +171,6 @@ class Data_Collector:
             text=formatted_texts,
             images=images_list,
             padding=True,
-            min_pixels=256 * 28 * 28,
-            max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
 
