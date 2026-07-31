@@ -7,31 +7,27 @@ from torchvision.transforms.functional import to_pil_image
 
 
 def _is_pil_image_by_module(obj):
-    if obj is None:
+    if obj is None or isinstance(obj, dict):
         return False
 
     obj_type = type(obj)
+    module_name = getattr(obj_type, "__module__", "")
 
-    module_name = getattr(obj_type, "__module__")
-    class_name = getattr(obj_type, "__name__")
-
-    if module_name is not None and startswith(module_name, "PIL") and class_name=="Image":
+    if module_name and module_name.startswith("PIL"):
         return True
 
     return False
+
 
 def _is_pil_img_duck_typing(obj):
     if obj is None or isinstance(obj, dict):
         return False
 
-    has_convert = hasattr(obj,"convert")
-    has_size = hasattr(obj, "size")
-    has_mode = hasattr(obj, "mode")
-
-    if has_convert and has_size and has_mode:
-        return True
-
-    return False
+    return (
+        hasattr(obj, "convert")
+        and hasattr(obj, "size")
+        and hasattr(obj, "mode")
+    )
 
 
 class QwenDataCollator:
@@ -96,6 +92,7 @@ class QwenDataCollator:
             if raw_img is None:
                 continue
 
+            img_obj = None
             if isinstance(raw_img, dict):
                 if "bytes" in raw_img and raw_img["bytes"]:
                     byte_tensor = torch.frombuffer(
@@ -107,15 +104,20 @@ class QwenDataCollator:
                     )).convert("RGB")
                 elif "path" in raw_img and raw_img["path"]:
                     img_obj = self._process_image_path_or_url(str(raw_img["path"]))
-                else:
-                    img_obj = raw_img
             elif isinstance(raw_img, str):
                 img_obj = self._process_image_path_or_url(raw_img)
             else:
                 img_obj = raw_img
 
-            if not _is_pil_image_by_module(img_obj) and not _is_pil_img_duck_typing(img_obj):
+            if img_obj is None:
+                continue
+
+            if _is_pil_image_by_module(img_obj) or _is_pil_img_duck_typing(img_obj):
+                img_obj = img_obj.convert("RGB")
+            elif isinstance(img_obj, torch.Tensor) or hasattr(img_obj, "__array__"):
                 img_obj = to_pil_image(img_obj).convert("RGB")
+            else:
+                continue
 
             raw_txt = feature.get("text")
 
