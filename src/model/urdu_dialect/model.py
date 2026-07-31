@@ -147,7 +147,8 @@ class unification_urdu_lang_model:
         data = get_datasets()
 
         for split in data.keys():
-            if "image" in data[split].column_names:
+            cols = getattr(data[split], "column_names", None)
+            if cols is not None and "image" in cols:
                 data[split] = data[split].cast_column("image", HFImage())
 
         return model, processor, data
@@ -233,8 +234,8 @@ class unification_urdu_lang_model:
                     bytearray(response.content), dtype=torch.uint8
                 )
                 image_tensor = tv_io.decode_image(
-                        storage_tensor, mode=tv_io.ImageReadMode.RGB
-                    )
+                    storage_tensor, mode=tv_io.ImageReadMode.RGB
+                )
                 image_pil = F.to_pil_image(image_tensor)
             else:
                 if not os.path.isabs(image_path):
@@ -250,10 +251,42 @@ class unification_urdu_lang_model:
 
     def _process(self, example):
         try:
-            # Native PIL image decoding provided by Hugging Face Datasets
-            image_pil = example["image"].convert("RGB")
+            image_pil = self._load_image(example)
+            if image_pil is None:
+                raise ValueError("Failed to load image tensor")
+
+            w, h = image_pil.size
+            min_dim = 56
+            max_aspect = 8.0
+
+            target_w = max(w, min_dim)
+            target_h = max(h, min_dim)
+
+            if target_w / target_h > max_aspect:
+                target_h = int(target_w / max_aspect)
+            elif target_h / target_w > max_aspect:
+                target_w = int(target_h / max_aspect)
+
+            pad_w = max(0, target_w - w)
+            pad_h = max(0, target_h - h)
+
+            if pad_w > 0 or pad_h > 0:
+                padding = [
+                    pad_w // 2,
+                    pad_h // 2,
+                    pad_w - (pad_w // 2),
+                    pad_h - (pad_h // 2),
+                ]
+                image_pil = F.pad(image_pil, padding=padding, fill=255)
+
         except Exception:
-            return {"is_valid": False}
+            return {
+                "input_ids": torch.zeros((1,), dtype=torch.long),
+                "attention_mask": torch.zeros((1,), dtype=torch.long),
+                "pixel_values": torch.zeros((1, 1176), dtype=torch.float32),
+                "image_grid_thw": torch.tensor([[1, 2, 2]], dtype=torch.long),
+                "is_valid": False,
+            }
 
         message = [
             {
@@ -276,7 +309,7 @@ class unification_urdu_lang_model:
         inputs = self.processor(
             text=[formatted_text],
             images=[image_pil],
-            padding=False,
+            padding=True,
             max_length=1024,
             min_pixels=256 * 28 * 28,
             max_pixels=512 * 28 * 28,
@@ -298,7 +331,6 @@ class unification_urdu_lang_model:
         grid_h = grid_thw[0][1].item()
         grid_w = grid_thw[0][2].item()
 
-        # Check Qwen2.5-VL minimum 2x2 patch requirement directly inline
         is_valid = True
         if grid_h < 2 or grid_w < 2 or grid_h % 2 != 0 or grid_w % 2 != 0:
             is_valid = False
@@ -336,7 +368,6 @@ class unification_urdu_lang_model:
 
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
-
 
         training_args = Seq2SeqTrainingArguments(
             output_dir="./results",

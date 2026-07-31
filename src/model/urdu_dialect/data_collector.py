@@ -56,7 +56,7 @@ class Data_Collector:
         pixel_values = torch.cat(pixel_values_list, dim=0)
         image_grid_thw = torch.cat(image_grid_thw_list, dim=0)
 
-        if image_grid_thw.dim()==3 and image_grid_thw.size(1):
+        if image_grid_thw.dim() == 3 and image_grid_thw.size(1) == 1:
             image_grid_thw = image_grid_thw.squeeze(1)
 
         labels = padded_text["input_ids"].clone()
