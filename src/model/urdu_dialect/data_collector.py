@@ -51,8 +51,8 @@ class Data_Collector:
             pixel_values_list.append(pixels)
             image_grid_thw_list.append(grid_thw)
 
-        pixel_values = torch.stack(pixel_values_list, dim=0)
-        image_grid_thw = torch.stack(image_grid_thw_list, dim=0)
+        pixel_values = torch.cat(pixel_values_list, dim=0)
+        image_grid_thw = torch.cat(image_grid_thw_list, dim=0)
 
         if image_grid_thw.dim()==3 and image_grid_thw.size(1):
             image_grid_thw = image_grid_thw.squeeze(1)

@@ -13,6 +13,7 @@ from evaluate import load
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
 from transformers import (
+    AutoConfig,
     AutoProcessor,
     BitsAndBytesConfig,
     Qwen2_5_VLForConditionalGeneration,
@@ -114,12 +115,16 @@ class unification_urdu_lang_model:
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
+
+        config = AutoConfig.from_pretrained(self.model_id)
+        config.use_cache = False
+
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
+            config=config,
             quantization_config=bnb_config,
             device_map={"": 0},
             attn_implementation="sdpa",
-            use_cache=False,
         )
         model.config.use_cache = False
 
