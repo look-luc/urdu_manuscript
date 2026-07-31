@@ -123,7 +123,10 @@ class QwenDataCollator:
 
             if self._has_image_content(raw_txt):
                 formatted_text = self.processor.apply_chat_template(
-                    raw_txt, tokenize=False, add_generation_prompt=False
+                    raw_txt,
+                    images=[img_obj],
+                    tokenize=False,
+                    add_generation_prompt=False,
                 )
             else:
                 target_text = self._extract_text_string(raw_txt)
@@ -143,7 +146,10 @@ class QwenDataCollator:
                     },
                 ]
                 formatted_text = self.processor.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=False
+                    messages,
+                    images=[img_obj],
+                    tokenize=False,
+                    add_generation_prompt=False,
                 )
 
             imgs.append([img_obj])
