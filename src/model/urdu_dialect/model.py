@@ -301,6 +301,13 @@ class unification_urdu_lang_model:
             return_tensors="pt",
         )
 
+        pixel_values = inputs["pixel_values"]
+
+        while pixel_values.dim() > 2:
+            pixel_values = pixel_values.squeeze(0)
+        if pixel_values.dim() == 1:
+            pixel_values = pixel_values.unsqueeze(0)
+
         grid_thw = inputs["image_grid_thw"]
 
         while grid_thw.dim() > 2:
@@ -308,12 +315,16 @@ class unification_urdu_lang_model:
         if grid_thw.dim() == 1:
             grid_thw = grid_thw.unsqueeze(0)
 
+        is_valid = True
+        if grid_thw.numel() == 0 or (grid_thw == 0).any():
+            is_valid = False
+
         return {
             "input_ids": inputs["input_ids"].squeeze(0),
             "attention_mask": inputs["attention_mask"].squeeze(0),
             "pixel_values": inputs["pixel_values"],
             "image_grid_thw": inputs["image_grid_thw"],
-            "is_valid": True
+            "is_valid": is_valid
         }
 
     def train(self):

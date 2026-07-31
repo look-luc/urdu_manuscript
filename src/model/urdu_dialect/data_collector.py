@@ -40,8 +40,6 @@ class Data_Collector:
             pixels = feature["pixel_values"]
             grid_thw = feature["image_grid_thw"]
 
-            while pixels.dim() > 2:
-                pixels = pixels.squeeze(0)
             if pixels.dim() == 1:
                 pixels = pixels.unsqueeze(0)
 
@@ -50,19 +48,14 @@ class Data_Collector:
             if grid_thw.dim() == 1:
                 grid_thw = grid_thw.unsqueeze(0)
 
-            GRID_H = grid_thw[0][1]
-            GRID_W = grid_thw[0][2]
-
-            if GRID_H < 2 or GRID_W < 2 or GRID_H % 2 != 0 or GRID_W % 2 != 0:
-                raise ValueError(f"Invalid grid dimension {GRID_H} {GRID_W}")
             pixel_values_list.append(pixels)
             image_grid_thw_list.append(grid_thw)
 
-        pixel_values = torch.cat(pixel_values_list, dim=0)
-        image_grid_thw = torch.cat(image_grid_thw_list, dim=0)
+        pixel_values = torch.stack(pixel_values_list, dim=0)
+        image_grid_thw = torch.stack(image_grid_thw_list, dim=0)
 
-        if pixel_values.dim() > 2:
-            pixel_values = pixel_values.view(-1, pixel_values.shape[-1])
+        if image_grid_thw.dim()==3 and image_grid_thw.size(1):
+            image_grid_thw = image_grid_thw.squeeze(1)
 
         labels = padded_text["input_ids"].clone()
         for i in range(len(features)):
