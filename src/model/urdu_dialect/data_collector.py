@@ -3,6 +3,35 @@ import urllib.request
 import torch
 import torchvision.io as io
 from torchvision.io import ImageReadMode
+from torchvision.transforms.functional import to_pil_image
+
+
+def _is_pil_image_by_module(obj):
+    if obj is None:
+        return False
+
+    obj_type = type(obj)
+
+    module_name = getattr(obj_type, "__module__")
+    class_name = getattr(obj_type, "__name__")
+
+    if module_name is not None and startswith(module_name, "PIL") and class_name=="Image":
+        return True
+
+    return False
+
+def _is_pil_img_duck_typing(obj):
+    if obj is None or isinstance(obj, dict):
+        return False
+
+    has_convert = hasattr(obj,"convert")
+    has_size = hasattr(obj, "size")
+    has_mode = hasattr(obj, "mode")
+
+    if has_convert and has_size and has_mode:
+        return True
+
+    return False
 
 
 class QwenDataCollator:
@@ -36,13 +65,14 @@ class QwenDataCollator:
         if path_str.startswith(("http://", "https://")):
             url_bytes = self._fetch_url_bytes(path_str)
             byte_tensor = torch.frombuffer(url_bytes, dtype=torch.uint8)
-            return io.decode_image(
+            img = to_pil_image(io.decode_image(
                 byte_tensor, mode=ImageReadMode.RGB
-            ).permute(1, 2, 0)
+            ))
         else:
-            return io.read_image(
+            img = to_pil_image(io.read_image(
                 path_str, mode=ImageReadMode.RGB
-            ).permute(1, 2, 0)
+            ))
+        return img.convert("RGB")
 
     def _has_image_content(self, raw_txt):
         if isinstance(raw_txt, list):
@@ -71,10 +101,10 @@ class QwenDataCollator:
                     byte_tensor = torch.frombuffer(
                         raw_img["bytes"], dtype=torch.uint8
                     )
-                    img_obj = io.decode_image(
+                    img_obj = to_pil_image(io.decode_image(
                         byte_tensor,
                         mode=ImageReadMode.RGB
-                    ).permute(1, 2, 0)
+                    )).convert("RGB")
                 elif "path" in raw_img and raw_img["path"]:
                     img_obj = self._process_image_path_or_url(str(raw_img["path"]))
                 else:
@@ -83,6 +113,9 @@ class QwenDataCollator:
                 img_obj = self._process_image_path_or_url(raw_img)
             else:
                 img_obj = raw_img
+
+            if not _is_pil_image_by_module(img_obj) and not _is_pil_img_duck_typing(img_obj):
+                img_obj = to_pil_image(img_obj).convert("RGB")
 
             raw_txt = feature.get("text")
 
@@ -111,7 +144,7 @@ class QwenDataCollator:
                     messages, tokenize=False, add_generation_prompt=False
                 )
 
-            imgs.append(img_obj)
+            imgs.append([img_obj])
             text_str.append(formatted_text)
 
         batch = self.processor(
