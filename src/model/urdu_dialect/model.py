@@ -19,9 +19,9 @@ root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
-from data.get_data import IMAGE_BASE_DIR, get_datasets
+from urdu_dialect.DataCollector import QwenDataCollator
 
-from .data_collector import Data_Collector
+from data.get_data import IMAGE_BASE_DIR, get_datasets
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
@@ -151,6 +151,7 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
+            data_collator=QwenDataCollator(self.processor)
             compute_metrics=self._compute_metrics,
         )
 
