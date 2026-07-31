@@ -98,8 +98,8 @@ class Data_Collector:
 
         return None
 
-    def _pad_to_square(self, image_pil, min_dim: int = 112):
-        """Pads PIL image to a 1:1 square canvas to prevent single-patch dimensions."""
+    def _pad_to_square(self, image_pil, min_dim: int = 280):
+        """Pads PIL image to a square canvas of at least min_dim to guarantee valid patch grids."""
         if image_pil is None:
             return None
 
@@ -129,7 +129,7 @@ class Data_Collector:
 
         for feature in features:
             raw_pil = self._load_image(feature.get("image"))
-            square_pil = self._pad_to_square(raw_pil, min_dim=112)
+            square_pil = self._pad_to_square(raw_pil, min_dim=280)
             if square_pil is None:
                 continue
 
@@ -161,7 +161,7 @@ class Data_Collector:
             text=formatted_texts,
             images=images_list,
             padding=True,
-            min_pixels=16 * 28 * 28,
+            min_pixels=256 * 28 * 28,
             max_pixels=512 * 28 * 28,
             return_tensors="pt",
         )
@@ -175,14 +175,16 @@ class Data_Collector:
 
         if len(valid_indices) < len(images_list):
             if not valid_indices:
-                raise ValueError("No samples in batch satisfied 2x2 grid constraints.")
+                raise ValueError(
+                    "No samples in batch satisfied 2x2 grid constraints."
+                )
             formatted_texts = [formatted_texts[i] for i in valid_indices]
             images_list = [images_list[i] for i in valid_indices]
             inputs = self.processor(
                 text=formatted_texts,
                 images=images_list,
                 padding=True,
-                min_pixels=16 * 28 * 28,
+                min_pixels=256 * 28 * 28,
                 max_pixels=512 * 28 * 28,
                 return_tensors="pt",
             )
