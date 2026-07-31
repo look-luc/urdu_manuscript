@@ -40,6 +40,8 @@ class Data_Collector:
             pixels = feature["pixel_values"]
             grid_thw = feature["image_grid_thw"]
 
+            while pixels.dim() > 2:
+                pixels = pixels.squeeze(0)
             if pixels.dim() == 1:
                 pixels = pixels.unsqueeze(0)
 
