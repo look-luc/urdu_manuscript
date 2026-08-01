@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from src.model.text_extraction.model import text_extraction
 from src.model.urdu_dialect.graphs import metrics_graph
 from src.model.urdu_dialect.model import unification_urdu_lang_model
+from src.test import run_diagnostics
 
 load_dotenv()
 hf_token = os.getenv("HF_TOKEN")
@@ -42,5 +43,7 @@ def run_model(what_model:str):
             file.write(save_status)
     elif what_model == "graph":
         metrics_graph()
+    elif what_model == "diagnostic":
+        run_diagnostics()
     else:
         raise ValueError(f"{what_model} is not a valid model run type.")

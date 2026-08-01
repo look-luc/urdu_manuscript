@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="all arguments to see what type of model will run")
 
-    parser.add_argument("-o", "--override", type=str, help="Insert what model type want to use (text_extraction, urdu_dialect, or graph)")
+    parser.add_argument("-o", "--override", type=str, help="Insert what model type want to use (text_extraction, urdu_dialect, diagnostic, or graph)")
 
     args = parser.parse_args()
 
