@@ -40,24 +40,36 @@ class QwenDataCollator:
                     return self._extract_text_string(val[key])
         return str(val) if val is not None else ""
 
-    def _pad_img_ten(self, img):
+    def _pad_img_ten(self, img, fill_value = 255):
         channels = img.shape[0]
         h = img.shape[1]
         w = img.shape[2]
 
+        if h == 0 or w == 0:
+            return img
+
         aspect_ratio = w/h
 
-        max_safe_aspect_ratio = self.min_pixels / (28 * 28)
+        max_safe_ratio = self.min_pixels / (28 * 28)
+        min_safe_ratio = (28 * 28) / self.min_pixels
 
-        if aspect_ratio > max_safe_aspect_ratio:
-            target_h = int(w / max_safe_aspect_ratio)
+        pad_left, pad_right, pad_top, pad_bottom = 0, 0, 0, 0
+
+        if aspect_ratio > max_safe_ratio:
+            target_h = int(w / max_safe_ratio)
 
             pad_h = target_h - h
 
-            top = pad_h // 2
-            bottom = pad_h - top
+            pad_top = pad_h // 2
+            pad_bottom = pad_h - pad_top
+        elif aspect_ratio < min_safe_ratio:
+            target_w = int(h*min_safe_ratio)
+            pad_w = target_w - w
+            pad_left = pad_w // 2
+            pad_right = pad_w - pad_left
 
-            img = F.pad(img, (0, 0, top, bottom))
+        if pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0:
+            img = F.pad(img, (pad_left, pad_right, pad_top, pad_bottom), mode = "constant", value = fill_value)
         return img
 
     def _load_image_tensor(self, raw_img) -> torch.Tensor | None:
