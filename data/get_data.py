@@ -23,6 +23,7 @@ def get_datasets():
     ds_arabic = prepare_dataset(
         cast(Dataset, load_dataset("mssqpi/Arabic-OCR-Dataset", split="train"))
     )
+    print("finished loading Arabic data")
 
     # --- Farsi ---
     parsynth_train = prepare_dataset(
@@ -35,6 +36,7 @@ def get_datasets():
             "image_path", "image"
         )
     )
+    print("finished loading Farsi data")
 
     # --- Persian ---
     persian_dict = load_dataset("ordaktaktak/Persian-OCR-230k")
@@ -44,6 +46,7 @@ def get_datasets():
     persian_test = prepare_dataset(
         cast(Dataset, persian_dict["test"]).rename_column("fname", "image")
     )
+    print("finished loading Persian data")
 
     # --- Urdu ---
     nastaliq = prepare_dataset(
@@ -61,6 +64,7 @@ def get_datasets():
     urdu_news_val = prepare_dataset(
         cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation"))
     )
+    print("finished loading Urdu data")
 
     # --- Kannada ---
     kannada_train = prepare_dataset(
@@ -75,6 +79,7 @@ def get_datasets():
         cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="test"))
     )
     kannada_df_test = interleave_datasets([kannada_val, kannada_test])
+    print("finished loading Kannada data")
 
     test_dataset = interleave_datasets(
         [
