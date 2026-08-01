@@ -1,9 +1,24 @@
+import io
 import urllib.request
 
 import numpy as np
 import torch
-import torchvision.io as io
+import torchvision.io as torchvision_io
 from torchvision.io import ImageReadMode
+
+
+class NonPILImageWrapper:
+    def __init__(self, array: np.ndarray):
+        self.array = array
+        self.height = array.shape[0]
+        self.width = array.shape[1]
+
+    @property
+    def size(self):
+        return (self.width, self.height)
+
+    def convert(self, mode="RGB"):
+        return self
 
 
 def _fetch_url_bytes(url: str, timeout: int = 10) -> bytes:
@@ -59,7 +74,7 @@ class QwenDataCollator:
                 byte_tensor = torch.frombuffer(
                     bytearray(raw_img["bytes"]), dtype=torch.uint8
                 )
-                return io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
+                return torchvision_io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
             elif "path" in raw_img and raw_img["path"]:
                 path_str = str(raw_img["path"])
                 if path_str.startswith(("http://", "https://")):
@@ -67,8 +82,8 @@ class QwenDataCollator:
                     byte_tensor = torch.frombuffer(
                         bytearray(url_bytes), dtype=torch.uint8
                     )
-                    return io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
-                return io.read_image(path_str, mode=ImageReadMode.RGB)
+                    return torchvision_io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
+                return torchvision_io.read_image(path_str, mode=ImageReadMode.RGB)
 
         elif isinstance(raw_img, str):
             if raw_img.startswith(("http://", "https://")):
@@ -76,8 +91,8 @@ class QwenDataCollator:
                 byte_tensor = torch.frombuffer(
                     bytearray(url_bytes), dtype=torch.uint8
                 )
-                return io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
-            return io.read_image(raw_img, mode=ImageReadMode.RGB)
+                return torchvision_io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
+            return torchvision_io.read_image(raw_img, mode=ImageReadMode.RGB)
 
         elif isinstance(raw_img, torch.Tensor):
             return raw_img
@@ -104,7 +119,7 @@ class QwenDataCollator:
             if img_tensor is None:
                 continue
 
-            # Enforce 3D (C, H, W) layout
+            # Enforce (3, H, W) layout
             if img_tensor.ndim == 2:
                 img_tensor = img_tensor.unsqueeze(0)
             elif img_tensor.ndim == 3 and img_tensor.shape[2] in [1, 3, 4]:
@@ -122,18 +137,18 @@ class QwenDataCollator:
                 img_tensor, min_dim=28, max_aspect_ratio=4.0
             )
 
-            # Convert (3, H, W) uint8 Tensor -> (H, W, 3) uint8 NumPy Array
             img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
+
+            wrapped_img = NonPILImageWrapper(img_numpy)
 
             target_text = self._extract_text_string(feature.get("text"))
 
-            # KEY FIX: Pass img_numpy into 'image' parameter of chat template
             messages = [
                 {
                     "role": "user",
                     "content": [
+                        {"type": "image", "image": wrapped_img},
                         {"type": "text", "text": self.prompt},
-                        {"type": "image", "image": img_numpy},
                     ],
                 },
                 {
@@ -153,15 +168,15 @@ class QwenDataCollator:
             imgs.append(img_numpy)
             text_str.append(formatted_text)
 
-        # Fallback guard to prevent N=0 batch crash if all images fail
         if len(imgs) == 0:
             dummy_np = np.full((28, 28, 3), 255, dtype=np.uint8)
+            wrapped_dummy = NonPILImageWrapper(dummy_np)
             dummy_messages = [
                 {
                     "role": "user",
                     "content": [
+                        {"type": "image", "image": wrapped_dummy},
                         {"type": "text", "text": self.prompt},
-                        {"type": "image", "image": dummy_np},
                     ],
                 },
                 {

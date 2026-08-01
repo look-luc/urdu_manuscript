@@ -1,217 +1,73 @@
 import os
 from typing import cast
 
-from datasets import Dataset, Image, IterableDataset, interleave_datasets, load_dataset
+from datasets import Dataset, IterableDataset, interleave_datasets, load_dataset
 
-# Determine the absolute directory where get_data.py is located
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Build the absolute path to the images directory
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
 def resolve_path(example):
     image_val = example.get("image")
-
     if isinstance(image_val, dict) and "path" in image_val:
         path = image_val["path"]
         if path and not path.startswith(("http://", "https://")) and not path.startswith(IMAGE_BASE_DIR):
             example["image"]["path"] = os.path.join(IMAGE_BASE_DIR, path)
-
     elif isinstance(image_val, str):
         if not image_val.startswith(("http://", "https://")) and not image_val.startswith(IMAGE_BASE_DIR):
             example["image"] = os.path.join(IMAGE_BASE_DIR, image_val)
-
     return example
 
 
 def is_valid_example(example):
-    """Filters out empty text, null images, and non-existent local image paths."""
     img = example.get("image")
     txt = example.get("text")
-
     if img is None or txt is None:
         return False
-
-    # Verify text is not blank filler
     if isinstance(txt, str) and not txt.strip():
         return False
-
-    # Check local path validity if string/dict path is present
-    if isinstance(img, dict) and "path" in img and img["path"]:
-        path_str = str(img["path"])
-        if not path_str.startswith(("http://", "https://")) and not os.path.exists(path_str):
-            return False
-    elif isinstance(img, str) and not img.startswith(("http://", "https://")):
-        if not os.path.exists(img):
-            return False
-
     return True
 
 
 def prepare_dataset(ds, select_cols=True) -> IterableDataset:
-    """Enforces schema casting and converts to IterableDataset BEFORE filtering for instant startup."""
     if select_cols:
         ds = ds.select_columns(["image", "text"])
-    ds = ds.cast_column("image", Image())
 
-    # Convert to IterableDataset FIRST so .filter() evaluates lazily on active batches
+    # Do NOT cast to Image() here to prevent stream crashes on unresolved paths
     iterable_ds = ds.to_iterable_dataset()
     return iterable_ds.filter(is_valid_example)
 
 
 def get_datasets():
     # --- Arabic ---
-    ds_arabic_raw = cast(
-        Dataset,
-        load_dataset(
-            "mssqpi/Arabic-OCR-Dataset",
-            split="train",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    ds_arabic = prepare_dataset(ds_arabic_raw)
+    ds_arabic = prepare_dataset(cast(Dataset, load_dataset("mssqpi/Arabic-OCR-Dataset", split="train")))
 
     # --- Farsi ---
-    parsynth_train_raw = cast(
-        Dataset,
-        load_dataset(
-            "hezarai/parsynth-ocr-200k",
-            split="train",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    ).rename_column("image_path", "image")
-    parsynth_train = prepare_dataset(parsynth_train_raw)
-
-    parsynth_test_raw = cast(
-        Dataset,
-        load_dataset(
-            "hezarai/parsynth-ocr-200k",
-            split="test",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    ).rename_column("image_path", "image")
-    parsynth_test = prepare_dataset(parsynth_test_raw)
+    parsynth_train = prepare_dataset(
+        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="train")).rename_column("image_path", "image")
+    )
+    parsynth_test = prepare_dataset(
+        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="test")).rename_column("image_path", "image")
+    )
 
     # --- Persian ---
-    persian_ocr_dict = load_dataset(
-        "ordaktaktak/Persian-OCR-230k", streaming=False
-    )
-
-    persian_ocr_train_raw = (
-        cast(Dataset, persian_ocr_dict["train"])
-        .rename_column("fname", "image")
-        .map(resolve_path)
-    )
-    persian_ocr_train = prepare_dataset(persian_ocr_train_raw)
-
-    persian_ocr_test_raw = (
-        cast(Dataset, persian_ocr_dict["test"])
-        .rename_column("fname", "image")
-        .map(resolve_path)
-    )
-    persian_ocr_test = prepare_dataset(persian_ocr_test_raw)
+    persian_dict = load_dataset("ordaktaktak/Persian-OCR-230k")
+    persian_train = prepare_dataset(cast(Dataset, persian_dict["train"]).rename_column("fname", "image").map(resolve_path))
+    persian_test = prepare_dataset(cast(Dataset, persian_dict["test"]).rename_column("fname", "image").map(resolve_path))
 
     # --- Urdu ---
-    nastaliq_raw = cast(
-        Dataset,
-        load_dataset(
-            "PuristanLabs1/urdu-ocr-1M",
-            "nastaliq",
-            split="train",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    nastaliq = prepare_dataset(nastaliq_raw)
-
-    naskh_raw = cast(
-        Dataset,
-        load_dataset(
-            "PuristanLabs1/urdu-ocr-1M",
-            "naskh",
-            split="train",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    naskh = prepare_dataset(naskh_raw)
-
-    urdu_news_raw = cast(
-        Dataset,
-        load_dataset(
-            "oddadmix/qari-0.2.2-news-dataset-large",
-            split="train",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    urdu_news = prepare_dataset(urdu_news_raw)
-
-    urdu_news_test_raw = cast(
-        Dataset,
-        load_dataset(
-            "oddadmix/qari-0.2.2-news-dataset-large",
-            split="test",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    urdu_news_test = prepare_dataset(urdu_news_test_raw)
-
-    urdu_news_val_raw = cast(
-        Dataset,
-        load_dataset(
-            "oddadmix/qari-0.2.2-news-dataset-large",
-            split="validation",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    urdu_news_val = prepare_dataset(urdu_news_val_raw)
+    nastaliq = prepare_dataset(cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train")))
+    naskh = prepare_dataset(cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train")))
+    urdu_news = prepare_dataset(cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train")))
+    urdu_news_test = prepare_dataset(cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test")))
+    urdu_news_val = prepare_dataset(cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation")))
 
     # --- Kannada ---
-    kannada_df_train_raw = cast(
-        Dataset,
-        load_dataset(
-            "darknight054/indic-mozhi-ocr",
-            "kannada",
-            split="train",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    kannada_df_train = prepare_dataset(kannada_df_train_raw)
+    kannada_train = prepare_dataset(cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="train")))
+    kannada_val = prepare_dataset(cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="validation")))
+    kannada_test = prepare_dataset(cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="test")))
+    kannada_df_test = interleave_datasets([kannada_val, kannada_test])
 
-    val_raw = cast(
-        Dataset,
-        load_dataset(
-            "darknight054/indic-mozhi-ocr",
-            "kannada",
-            split="validation",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    val = prepare_dataset(val_raw)
-
-    test_raw = cast(
-        Dataset,
-        load_dataset(
-            "darknight054/indic-mozhi-ocr",
-            "kannada",
-            split="test",
-            streaming=False,
-            keep_in_memory=False,
-        ),
-    )
-    test = prepare_dataset(test_raw)
-
-    kannada_df_test = interleave_datasets([val, test])
-
-    # --- Slicing & Interleaving ---
     test_dataset = interleave_datasets(
         [
             ds_arabic.take(600),
@@ -219,7 +75,7 @@ def get_datasets():
             naskh.take(600),
             urdu_news_test,
             parsynth_test,
-            persian_ocr_test,
+            persian_test,
             urdu_news_val,
             kannada_df_test,
         ],
@@ -233,14 +89,11 @@ def get_datasets():
             naskh.skip(600),
             urdu_news,
             parsynth_train,
-            persian_ocr_train,
-            kannada_df_train,
+            persian_train,
+            kannada_train,
         ],
         seed=42,
         stopping_strategy="all_exhausted",
     )
 
-    return {
-        "train": train_dataset,
-        "test": test_dataset,
-    }
+    return {"train": train_dataset, "test": test_dataset}
