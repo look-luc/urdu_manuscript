@@ -113,11 +113,13 @@ class unification_urdu_lang_model:
             attn_implementation="sdpa",
             torch_dtype=torch.bfloat16,
         )
+        self.min_pixels = 28 * 28
+        self.max_pixels = 512 * 28 * 28
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
-            min_pixels=28 * 28,
-            max_pixels=512 * 28 * 28,
+            min_pixels=self.min_pixels,
+            max_pixels=self.max_pixels,
         )
 
         data = get_datasets()
@@ -153,7 +155,7 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=QwenDataCollator(self.processor, prompt=self.prompt),
+            data_collator=QwenDataCollator(self.processor, prompt=self.prompt, min_pixels=self.min_pixels, max_pixels=self.max_pixels),
             compute_metrics=self._compute_metrics,
         )
 
