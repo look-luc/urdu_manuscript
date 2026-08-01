@@ -11,8 +11,8 @@ from transformers import (
     AutoConfig,
     AutoProcessor,
     Qwen2_5_VLForConditionalGeneration,
-    Seq2SeqTrainer,
-    Seq2SeqTrainingArguments,
+    Trainer,
+    TrainingArguments,
 )
 
 root_dir = Path(__file__).resolve().parents[3]
@@ -133,7 +133,7 @@ class unification_urdu_lang_model:
         self.model.enable_input_require_grads()
         self.model.gradient_checkpointing_enable()
 
-        training_args = Seq2SeqTrainingArguments(
+        training_args = TrainingArguments(
             output_dir="./results",
             per_device_train_batch_size=2,
             per_device_eval_batch_size=2,
@@ -150,7 +150,7 @@ class unification_urdu_lang_model:
             remove_unused_columns=False,
         )
 
-        trainer = Seq2SeqTrainer(
+        trainer = Trainer(
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
