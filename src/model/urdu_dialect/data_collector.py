@@ -1,57 +1,28 @@
 import copy
 import urllib.request
 
+import numpy as np
 import torch
 import torchvision.io as io
-from PIL import Image
 from torchvision.io import ImageReadMode
-from torchvision.transforms.functional import to_pil_image
-
-try:
-    from qwen_vl_utils import process_vision_info
-    HAS_QWEN_UTILS = True
-except ImportError:
-    HAS_QWEN_UTILS = False
 
 
-def _is_pil_image_by_module(obj):
-    if obj is None or isinstance(obj, dict):
-        return False
-
-    obj_type = type(obj)
-    module_name = getattr(obj_type, "__module__", "")
-
-    if module_name and module_name.startswith("PIL"):
-        return True
-
-    return False
-
-
-def _is_pil_img_duck_typing(obj):
-    if obj is None or isinstance(obj, dict):
-        return False
-
-    return (
-        hasattr(obj, "convert")
-        and hasattr(obj, "size")
-        and hasattr(obj, "mode")
-    )
-
-
-def _ensure_min_dimensions(
-    img: Image.Image, min_dim: int = 28, max_aspect_ratio: float = 4.0
-) -> Image.Image:
-    w, h = img.size
+def _ensure_min_dimensions_tensor(
+    img: torch.Tensor, min_dim: int = 28, max_aspect_ratio: float = 4.0
+) -> torch.Tensor:
+    c, h, w = img.shape
     aspect_ratio = max(w / h, h / w) if h > 0 and w > 0 else 1.0
 
     if w >= min_dim and h >= min_dim and aspect_ratio <= max_aspect_ratio:
         return img
 
     side = max(w, h, min_dim)
-    canvas = Image.new("RGB", (side, side), (255, 255, 255))
+    canvas = torch.full(
+        (c, side, side), 255, dtype=img.dtype, device=img.device
+    )
     offset_x = (side - w) // 2
     offset_y = (side - h) // 2
-    canvas.paste(img, (offset_x, offset_y))
+    canvas[:, offset_y : offset_y + h, offset_x : offset_x + w] = img
     return canvas
 
 
@@ -76,24 +47,20 @@ class QwenDataCollator:
 
     def _fetch_url_bytes(self, url: str) -> bytes:
         req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "Mozilla/5.0"}
+            url, headers={"User-Agent": "Mozilla/5.0"}
         )
         with urllib.request.urlopen(req) as response:
             return response.read()
 
-    def _process_image_path_or_url(self, path_str: str):
+    def _process_image_path_or_url(self, path_str: str) -> torch.Tensor:
         if path_str.startswith(("http://", "https://")):
             url_bytes = self._fetch_url_bytes(path_str)
             byte_tensor = torch.frombuffer(bytearray(url_bytes), dtype=torch.uint8)
-            img = to_pil_image(io.decode_image(
-                byte_tensor, mode=ImageReadMode.RGB
-            ))
+            img_tensor = io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
         else:
-            img = to_pil_image(io.read_image(
-                path_str, mode=ImageReadMode.RGB
-            ))
-        return img.convert("RGB")
+            img_tensor = io.read_image(path_str, mode=ImageReadMode.RGB)
+
+        return img_tensor
 
     def _has_image_content(self, raw_txt):
         if isinstance(raw_txt, list):
@@ -118,7 +85,6 @@ class QwenDataCollator:
     def __call__(self, features):
         text_str = []
         imgs = []
-        batch_messages = []
 
         for feature in features:
             raw_img = (
@@ -129,52 +95,58 @@ class QwenDataCollator:
             if raw_img is None:
                 continue
 
-            img_obj = None
+            img_tensor = None
             if isinstance(raw_img, dict):
                 if "bytes" in raw_img and raw_img["bytes"]:
                     byte_tensor = torch.frombuffer(
                         bytearray(raw_img["bytes"]), dtype=torch.uint8
                     )
-                    img_obj = to_pil_image(
-                        io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
-                    ).convert("RGB")
+                    img_tensor = io.decode_image(
+                        byte_tensor, mode=ImageReadMode.RGB
+                    )
                 elif "path" in raw_img and raw_img["path"]:
-                    img_obj = self._process_image_path_or_url(
+                    img_tensor = self._process_image_path_or_url(
                         str(raw_img["path"])
                     )
             elif isinstance(raw_img, str):
-                img_obj = self._process_image_path_or_url(raw_img)
-            else:
-                img_obj = raw_img
+                img_tensor = self._process_image_path_or_url(raw_img)
+            elif isinstance(raw_img, torch.Tensor):
+                img_tensor = raw_img
+            elif hasattr(raw_img, "__array__"):
+                img_tensor = torch.from_numpy(np.asarray(raw_img))
 
-            if img_obj is None:
+            if img_tensor is None:
                 continue
 
-            if _is_pil_image_by_module(img_obj) or _is_pil_img_duck_typing(
-                img_obj
-            ):
-                img_obj = img_obj.convert("RGB")
-            elif isinstance(img_obj, torch.Tensor) or hasattr(
-                img_obj, "__array__"
-            ):
-                img_obj = to_pil_image(img_obj).convert("RGB")
-            else:
-                continue
+            # Force (3, H, W) layout if shape is (H, W, 3)
+            if img_tensor.ndim == 3 and img_tensor.shape[2] in [1, 3, 4]:
+                img_tensor = img_tensor.permute(2, 0, 1)
 
-            # Ensure minimum dimensions and prevent extreme aspect ratio grid collapse
-            img_obj = _ensure_min_dimensions(img_obj, min_dim=28, max_aspect_ratio=4.0)
+            # Keep only 3-channel RGB
+            if img_tensor.shape[0] == 4:
+                img_tensor = img_tensor[:3, :, :]
+            elif img_tensor.shape[0] == 1:
+                img_tensor = img_tensor.repeat(3, 1, 1)
+
+            # Ensure minimum dimensions and grid padding
+            img_tensor = _ensure_min_dimensions_tensor(
+                img_tensor, min_dim=28, max_aspect_ratio=4.0
+            )
+
+            # Convert (3, H, W) Tensor -> (H, W, 3) NumPy Array for HF Processor
+            img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
 
             raw_txt = feature.get("text")
 
             if self._has_image_content(raw_txt):
-                messages = self._bind_image_to_messages(raw_txt, img_obj)
+                messages = self._bind_image_to_messages(raw_txt, img_numpy)
             else:
                 target_text = self._extract_text_string(raw_txt)
                 messages = [
                     {
                         "role": "user",
                         "content": [
-                            {"type": "image", "image": img_obj},
+                            {"type": "image", "image": img_numpy},
                             {"type": "text", "text": self.prompt},
                         ],
                     },
@@ -192,26 +164,15 @@ class QwenDataCollator:
                 add_generation_prompt=False,
             )
 
-            imgs.append(img_obj)
+            imgs.append(img_numpy)
             text_str.append(formatted_text)
-            batch_messages.append(messages)
 
-        if HAS_QWEN_UTILS:
-            image_inputs, video_inputs = process_vision_info(batch_messages)
-            batch = self.processor(
-                text=text_str,
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt",
-            )
-        else:
-            batch = self.processor(
-                text=text_str,
-                images=imgs,
-                padding=True,
-                return_tensors="pt",
-            )
+        batch = self.processor(
+            text=text_str,
+            images=imgs if len(imgs) > 0 else None,
+            padding=True,
+            return_tensors="pt",
+        )
 
         labels = batch["input_ids"].clone()
         labels[labels == self.processor.tokenizer.pad_token_id] = -100
