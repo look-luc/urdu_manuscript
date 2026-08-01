@@ -94,9 +94,9 @@ class unification_urdu_lang_model:
         return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
-        # torch.backends.cudnn.enabled = True
-        # torch.backends.cudnn.benchmark = False
-        # torch.cuda.set_device(0)
+        torch.backends.cudnn.enabled = False
+        torch.backends.cudnn.benchmark = False
+        torch.cuda.set_device(0)
 
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")

@@ -27,9 +27,7 @@ module purge
 module load anaconda
 conda activate urdu_manuscript_stable
 
-SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-
-export LD_LIBRARY_PATH="$SITE_PKG/nvidia/cudnn/lib:$SITE_PKG/nvidia/cublas/lib:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 
 cd /projects/$USER/urdu_manuscript
 

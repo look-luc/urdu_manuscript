@@ -1,5 +1,4 @@
 import os
-import tempfile
 import urllib.request
 
 import numpy as np
@@ -15,25 +14,6 @@ def _fetch_url_bytes(url: str, timeout: int = 10) -> bytes:
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
-
-
-def _ensure_min_dimensions_tensor(
-    img: torch.Tensor, min_dim: int = 28, max_aspect_ratio: float = 4.0
-) -> torch.Tensor:
-    c, h, w = img.shape
-    aspect_ratio = max(w / h, h / w) if h > 0 and w > 0 else 1.0
-
-    if w >= min_dim and h >= min_dim and aspect_ratio <= max_aspect_ratio:
-        return img
-
-    side = max(w, h, min_dim)
-    canvas = torch.full(
-        (c, side, side), 255, dtype=img.dtype, device=img.device
-    )
-    offset_x = (side - w) // 2
-    offset_y = (side - h) // 2
-    canvas[:, offset_y : offset_y + h, offset_x : offset_x + w] = img
-    return canvas
 
 
 class QwenDataCollator:
@@ -120,87 +100,64 @@ class QwenDataCollator:
             if img_tensor.dtype != torch.uint8:
                 img_tensor = img_tensor.to(torch.uint8)
 
-            img_tensor = _ensure_min_dimensions_tensor(
-                img_tensor, min_dim=28, max_aspect_ratio=4.0
+            # Convert directly to channel-last uint8 NumPy array (H, W, 3) in memory
+            img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
+
+            target_text = self._extract_text_string(feature.get("text"))
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": img_numpy},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": target_text},
+                    ],
+                },
+            ]
+
+            # In-memory numpy array guarantees exact matching with processor(images=...)
+            formatted_text = self.processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
             )
 
-            # Write preprocessed tensor to a temporary file for apply_chat_template
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
-                temp_img_path = tmp_file.name
-
-            torchvision_io.write_png(img_tensor, temp_img_path)
-
-            try:
-                target_text = self._extract_text_string(feature.get("text"))
-
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image", "image": temp_img_path},
-                            {"type": "text", "text": self.prompt},
-                        ],
-                    },
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": target_text},
-                        ],
-                    },
-                ]
-
-                formatted_text = self.processor.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=False,
-                )
-            finally:
-                if os.path.exists(temp_img_path):
-                    os.remove(temp_img_path)
-
-            img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
             imgs.append(img_numpy)
             text_str.append(formatted_text)
 
         if len(imgs) == 0:
-            dummy_tensor = torch.full((3, 28, 28), 255, dtype=torch.uint8)
+            dummy_np = np.full((28, 28, 3), 255, dtype=np.uint8)
 
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
-                dummy_path = tmp_file.name
+            dummy_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": dummy_np},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": ""},
+                    ],
+                },
+            ]
 
-            torchvision_io.write_png(dummy_tensor, dummy_path)
+            dummy_text = self.processor.apply_chat_template(
+                dummy_messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
 
-            try:
-                dummy_messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image", "image": dummy_path},
-                            {"type": "text", "text": self.prompt},
-                        ],
-                    },
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": ""},
-                        ],
-                    },
-                ]
-
-                dummy_text = self.processor.apply_chat_template(
-                    dummy_messages,
-                    tokenize=False,
-                    add_generation_prompt=False,
-                )
-
-                dummy_np = dummy_tensor.permute(1, 2, 0).cpu().numpy()
-
-                imgs.append(dummy_np)
-                text_str.append(dummy_text)
-
-            finally:
-                if os.path.exists(dummy_path):
-                    os.remove(dummy_path)
+            imgs.append(dummy_np)
+            text_str.append(dummy_text)
 
         batch = self.processor(
             text=text_str,
