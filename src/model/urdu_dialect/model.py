@@ -94,33 +94,34 @@ class unification_urdu_lang_model:
         return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
-            torch.backends.cudnn.enabled = True
-            torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = False
+        torch.cuda.set_device(0)
 
-            if self.device != "cuda":
-                raise ValueError("CUDA device not detected")
+        if self.device != "cuda":
+            raise ValueError("CUDA device not detected")
 
-            torch.cuda.empty_cache()
-            gc.collect()
+        torch.cuda.empty_cache()
+        gc.collect()
 
-            config = AutoConfig.from_pretrained(self.model_id)
-            config.use_cache = False
+        config = AutoConfig.from_pretrained(self.model_id)
+        config.use_cache = False
 
-            model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                self.model_id,
-                device_map=self.device,
-                attn_implementation="sdpa",
-            )
+        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+            self.model_id,
+            device_map=self.device,
+            attn_implementation="sdpa",
+        )
 
-            processor = AutoProcessor.from_pretrained(
-                self.model_id,
-                min_pixels=28 * 28,
-                max_pixels=512 * 28 * 28,
-            )
+        processor = AutoProcessor.from_pretrained(
+            self.model_id,
+            min_pixels=28 * 28,
+            max_pixels=512 * 28 * 28,
+        )
 
-            data = get_datasets()
+        data = get_datasets()
 
-            return model, processor, data
+        return model, processor, data
 
     def train(self):
         train_dataset = self.data["train"]
