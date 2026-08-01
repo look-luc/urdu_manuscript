@@ -62,26 +62,6 @@ class QwenDataCollator:
 
         return img_tensor
 
-    def _has_image_content(self, raw_txt):
-        if isinstance(raw_txt, list):
-            for msg in raw_txt:
-                if isinstance(msg, dict) and isinstance(msg.get("content"), list):
-                    for item in msg["content"]:
-                        if isinstance(item, dict) and item.get("type") == "image":
-                            return True
-        return False
-
-    def _bind_image_to_messages(self, raw_txt, img_obj):
-        messages = copy.deepcopy(raw_txt)
-        for msg in messages:
-            if isinstance(msg, dict):
-                content = msg.get("content")
-                if isinstance(content, list):
-                    for item in content:
-                        if isinstance(item, dict) and item.get("type") == "image":
-                            item["image"] = img_obj
-        return messages
-
     def __call__(self, features):
         text_str = []
         imgs = []
@@ -119,14 +99,16 @@ class QwenDataCollator:
                 continue
 
             # Force (3, H, W) layout if shape is (H, W, 3)
-            if img_tensor.ndim == 3 and img_tensor.shape[2] in [1, 3, 4]:
+            if img_tensor.ndim == 2:
+                img_tensor = torch.unsqueeze(img_tensor, dim=0)
+            elif img_tensor.ndim == 3 and img_tensor.shape[2] in [1, 3, 4]:
                 img_tensor = img_tensor.permute(2, 0, 1)
 
             # Keep only 3-channel RGB
-            if img_tensor.shape[0] == 4:
-                img_tensor = img_tensor[:3, :, :]
-            elif img_tensor.shape[0] == 1:
+            if img_tensor.shape[0] == 1:
                 img_tensor = img_tensor.repeat(3, 1, 1)
+            elif img_tensor.shape[0] == 4:
+                img_tensor = img_tensor[:3, :, :]
 
             # Ensure minimum dimensions and grid padding
             img_tensor = _ensure_min_dimensions_tensor(
@@ -137,26 +119,22 @@ class QwenDataCollator:
             img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
 
             raw_txt = feature.get("text")
-
-            if self._has_image_content(raw_txt):
-                messages = self._bind_image_to_messages(raw_txt, img_numpy)
-            else:
-                target_text = self._extract_text_string(raw_txt)
-                messages = [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image", "image": img_numpy},
-                            {"type": "text", "text": self.prompt},
-                        ],
-                    },
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "text", "text": target_text},
-                        ],
-                    },
-                ]
+            target_text = self._extract_text_string(raw_txt)
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": self.prompt},
+                        {"type": "image"},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": target_text},
+                    ],
+                },
+            ]
 
             formatted_text = self.processor.apply_chat_template(
                 messages,

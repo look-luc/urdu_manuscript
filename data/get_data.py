@@ -52,7 +52,7 @@ def prepare_dataset(ds, select_cols=True) -> IterableDataset:
     """Enforces schema casting and converts to IterableDataset BEFORE filtering for instant startup."""
     if select_cols:
         ds = ds.select_columns(["image", "text"])
-    ds = ds.cast_column("image", Image(decode=False))
+    ds = ds.cast_column("image", Image())
 
     # Convert to IterableDataset FIRST so .filter() evaluates lazily on active batches
     iterable_ds = ds.to_iterable_dataset()
