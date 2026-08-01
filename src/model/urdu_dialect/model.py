@@ -96,8 +96,11 @@ class unification_urdu_lang_model:
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
 
-        torch.cuda.empty_cache()
         gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
@@ -108,7 +111,8 @@ class unification_urdu_lang_model:
             attn_implementation="sdpa",
             torch_dtype=torch.bfloat16,
         )
-        self.min_pixels = 128 * 56 * 56
+
+        self.min_pixels = 56 * 56
         self.max_pixels = 1280 * 28 * 28
 
         processor = AutoProcessor.from_pretrained(
