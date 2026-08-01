@@ -40,7 +40,7 @@ class QwenDataCollator:
                     return self._extract_text_string(val[key])
         return str(val) if val is not None else ""
 
-    def _pad_img_ten(self, img, fill_value = 255):
+    def _pad_img_ten(self, img, fill_value=255):
         channels = img.shape[0]
         h = img.shape[1]
         w = img.shape[2]
@@ -48,7 +48,7 @@ class QwenDataCollator:
         if h == 0 or w == 0:
             return img
 
-        aspect_ratio = w/h
+        aspect_ratio = w / h
 
         max_safe_ratio = self.min_pixels / (28 * 28)
         min_safe_ratio = (28 * 28) / self.min_pixels
@@ -57,19 +57,35 @@ class QwenDataCollator:
 
         if aspect_ratio > max_safe_ratio:
             target_h = int(w / max_safe_ratio)
-
             pad_h = target_h - h
-
             pad_top = pad_h // 2
             pad_bottom = pad_h - pad_top
         elif aspect_ratio < min_safe_ratio:
-            target_w = int(h*min_safe_ratio)
+            target_w = int(h * min_safe_ratio)
             pad_w = target_w - w
             pad_left = pad_w // 2
             pad_right = pad_w - pad_left
 
+        curr_h = h + pad_top + pad_bottom
+        curr_w = w + pad_left + pad_right
+
+        if curr_h < 56:
+            diff_h = 56 - curr_h
+            pad_top += diff_h // 2
+            pad_bottom += diff_h - (diff_h // 2)
+
+        if curr_w < 56:
+            diff_w = 56 - curr_w
+            pad_left += diff_w // 2
+            pad_right += diff_w - (diff_w // 2)
+
         if pad_left > 0 or pad_right > 0 or pad_top > 0 or pad_bottom > 0:
-            img = F.pad(img, (pad_left, pad_right, pad_top, pad_bottom), mode = "constant", value = fill_value)
+            img = F.pad(
+                img,
+                (pad_left, pad_right, pad_top, pad_bottom),
+                mode="constant",
+                value=fill_value,
+            )
         return img
 
     def _load_image_tensor(self, raw_img) -> torch.Tensor | None:
@@ -136,7 +152,7 @@ class QwenDataCollator:
             if img_tensor.dtype != torch.uint8:
                 img_tensor = img_tensor.to(torch.uint8)
 
-            img_tensor = self._pad_img_ten(img_tensor)
+            img_tensor = self._pad_img_ten(img_tensor, fill_value=255)
 
             pil_img = to_pil_image(img_tensor)
 
@@ -227,6 +243,8 @@ class QwenDataCollator:
         batch = self.processor(
             text=text_str,
             images=imgs,
+            min_pixels=self.min_pixels,
+            max_pixels=self.max_pixels,
             padding=True,
             return_tensors="pt",
         )
