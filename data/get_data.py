@@ -17,6 +17,11 @@ def prepare_dataset(ds: Dataset, select_cols=True) -> IterableDataset:
     iterable_ds = ds.to_iterable_dataset()
     return iterable_ds
 
+def fix_persian_image_path(example):
+    """Prepends absolute base directory path to relative image filename."""
+    if isinstance(example["fname"], str):
+        example["fname"] = os.path.join(IMAGE_BASE_DIR, example["fname"])
+    return example
 
 def get_datasets():
     # --- Arabic ---
@@ -40,11 +45,15 @@ def get_datasets():
 
     # --- Persian ---
     persian_dict = load_dataset("ordaktaktak/Persian-OCR-230k")
+
+    persian_train_raw = cast(Dataset, persian_dict["train"]).map(fix_persian_image_path)
+    persian_test_raw = cast(Dataset, persian_dict["test"]).map(fix_persian_image_path)
+
     persian_train = prepare_dataset(
-        cast(Dataset, persian_dict["train"]).rename_column("fname", "image")
+        persian_train_raw.rename_column("fname", "image")
     )
     persian_test = prepare_dataset(
-        cast(Dataset, persian_dict["test"]).rename_column("fname", "image")
+        persian_test_raw.rename_column("fname", "image")
     )
     print("finished loading Persian data")
 
