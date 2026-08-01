@@ -1,10 +1,11 @@
-import os
 import urllib.request
 
 import numpy as np
 import torch
 import torchvision.io as torchvision_io
+from qwen_vl_utils import process_vision_info
 from torchvision.io import ImageReadMode
+from torchvision.transforms.functional import to_pil_image
 
 
 def _fetch_url_bytes(url: str, timeout: int = 10) -> bytes:
@@ -100,8 +101,8 @@ class QwenDataCollator:
             if img_tensor.dtype != torch.uint8:
                 img_tensor = img_tensor.to(torch.uint8)
 
-            # Convert directly to channel-last uint8 NumPy array (H, W, 3) in memory
-            img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
+            # Convert (3, H, W) uint8 Tensor to PIL Image in memory
+            pil_img = to_pil_image(img_tensor)
 
             target_text = self._extract_text_string(feature.get("text"))
 
@@ -109,7 +110,7 @@ class QwenDataCollator:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": img_numpy},
+                        {"type": "image", "image": pil_img},
                         {"type": "text", "text": self.prompt},
                     ],
                 },
@@ -121,24 +122,30 @@ class QwenDataCollator:
                 },
             ]
 
-            # In-memory numpy array guarantees exact matching with processor(images=...)
+            image_inputs, _ = process_vision_info(messages)
+
             formatted_text = self.processor.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
 
-            imgs.append(img_numpy)
+            if image_inputs:
+                imgs.extend(image_inputs)
+            else:
+                imgs.append(pil_img)
+
             text_str.append(formatted_text)
 
         if len(imgs) == 0:
-            dummy_np = np.full((28, 28, 3), 255, dtype=np.uint8)
+            dummy_tensor = torch.full((3, 28, 28), 255, dtype=torch.uint8)
+            dummy_pil = to_pil_image(dummy_tensor)
 
             dummy_messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": dummy_np},
+                        {"type": "image", "image": dummy_pil},
                         {"type": "text", "text": self.prompt},
                     ],
                 },
@@ -150,13 +157,19 @@ class QwenDataCollator:
                 },
             ]
 
+            dummy_image_inputs, _ = process_vision_info(dummy_messages)
+
             dummy_text = self.processor.apply_chat_template(
                 dummy_messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
 
-            imgs.append(dummy_np)
+            if dummy_image_inputs:
+                imgs.extend(dummy_image_inputs)
+            else:
+                imgs.append(dummy_pil)
+
             text_str.append(dummy_text)
 
         batch = self.processor(
