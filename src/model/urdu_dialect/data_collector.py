@@ -1,6 +1,3 @@
-import copy
-import urllib.request
-
 import numpy as np
 import torch
 import torchvision.io as io
@@ -27,11 +24,11 @@ def _ensure_min_dimensions_tensor(
 
 
 class QwenDataCollator:
-    def __init__(self, processor, prompt):
+    def __init__(self, processor, prompt: str):
         self.processor = processor
         self.prompt = prompt
 
-    def _extract_text_string(self, val):
+    def _extract_text_string(self, val) -> str:
         if isinstance(val, str):
             return val
         if isinstance(val, list):
@@ -45,81 +42,62 @@ class QwenDataCollator:
                     return self._extract_text_string(val[key])
         return str(val) if val is not None else ""
 
-    def _fetch_url_bytes(self, url: str) -> bytes:
-        req = urllib.request.Request(
-            url, headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with urllib.request.urlopen(req) as response:
-            return response.read()
-
-    def _process_image_path_or_url(self, path_str: str) -> torch.Tensor:
-        if path_str.startswith(("http://", "https://")):
-            url_bytes = self._fetch_url_bytes(path_str)
-            byte_tensor = torch.frombuffer(bytearray(url_bytes), dtype=torch.uint8)
-            img_tensor = io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
-        else:
-            img_tensor = io.read_image(path_str, mode=ImageReadMode.RGB)
-
-        return img_tensor
-
     def __call__(self, features):
         text_str = []
         imgs = []
 
         for feature in features:
-            raw_img = (
-                feature.get("image")
-                if "image" in feature
-                else feature.get("images")
-            )
+            raw_img = feature.get("image") if "image" in feature else feature.get("images")
             if raw_img is None:
                 continue
 
             img_tensor = None
+
+            # 1. Decode to torch.Tensor without PIL
             if isinstance(raw_img, dict):
                 if "bytes" in raw_img and raw_img["bytes"]:
                     byte_tensor = torch.frombuffer(
                         bytearray(raw_img["bytes"]), dtype=torch.uint8
                     )
-                    img_tensor = io.decode_image(
-                        byte_tensor, mode=ImageReadMode.RGB
-                    )
+                    img_tensor = io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
                 elif "path" in raw_img and raw_img["path"]:
-                    img_tensor = self._process_image_path_or_url(
-                        str(raw_img["path"])
-                    )
+                    img_tensor = io.read_image(str(raw_img["path"]), mode=ImageReadMode.RGB)
             elif isinstance(raw_img, str):
-                img_tensor = self._process_image_path_or_url(raw_img)
+                img_tensor = io.read_image(raw_img, mode=ImageReadMode.RGB)
             elif isinstance(raw_img, torch.Tensor):
                 img_tensor = raw_img
             elif hasattr(raw_img, "__array__"):
+                # Handles PIL or NumPy inputs by converting directly to Torch Tensor
                 img_tensor = torch.from_numpy(np.asarray(raw_img))
 
             if img_tensor is None:
                 continue
 
-            # Force (3, H, W) layout if shape is (H, W, 3)
+            # 2. Enforce 3D (C, H, W) layout
             if img_tensor.ndim == 2:
-                img_tensor = torch.unsqueeze(img_tensor, dim=0)
+                img_tensor = img_tensor.unsqueeze(0)
             elif img_tensor.ndim == 3 and img_tensor.shape[2] in [1, 3, 4]:
                 img_tensor = img_tensor.permute(2, 0, 1)
 
-            # Keep only 3-channel RGB
+            # 3. Standardize channels to 3-channel RGB uint8
             if img_tensor.shape[0] == 1:
                 img_tensor = img_tensor.repeat(3, 1, 1)
             elif img_tensor.shape[0] == 4:
                 img_tensor = img_tensor[:3, :, :]
 
-            # Ensure minimum dimensions and grid padding
+            if img_tensor.dtype != torch.uint8:
+                img_tensor = img_tensor.to(torch.uint8)
+
+            # 4. Canvas padding for minimum dimension
             img_tensor = _ensure_min_dimensions_tensor(
                 img_tensor, min_dim=28, max_aspect_ratio=4.0
             )
 
-            # Convert (3, H, W) Tensor -> (H, W, 3) NumPy Array for HF Processor
+            # Convert (3, H, W) Tensor -> (H, W, 3) uint8 NumPy Array for HuggingFace Processor
             img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
 
-            raw_txt = feature.get("text")
-            target_text = self._extract_text_string(raw_txt)
+            target_text = self._extract_text_string(feature.get("text"))
+
             messages = [
                 {
                     "role": "user",
