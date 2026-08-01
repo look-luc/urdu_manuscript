@@ -12,39 +12,68 @@ def prepare_dataset(ds: Dataset, select_cols=True) -> IterableDataset:
     if select_cols:
         ds = ds.select_columns(["image", "text"])
 
-    ds = ds.cast_column("image", HFImage(decode=False))
+    ds = ds.cast_column("image", HFImage(decode=True))
 
     iterable_ds = ds.to_iterable_dataset()
     return iterable_ds
 
+
 def get_datasets():
     # --- Arabic ---
-    ds_arabic = prepare_dataset(cast(Dataset, load_dataset("mssqpi/Arabic-OCR-Dataset", split="train")))
+    ds_arabic = prepare_dataset(
+        cast(Dataset, load_dataset("mssqpi/Arabic-OCR-Dataset", split="train"))
+    )
 
     # --- Farsi ---
     parsynth_train = prepare_dataset(
-        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="train")).rename_column("image_path", "image")
+        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="train")).rename_column(
+            "image_path", "image"
+        )
     )
     parsynth_test = prepare_dataset(
-        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="test")).rename_column("image_path", "image")
+        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="test")).rename_column(
+            "image_path", "image"
+        )
     )
 
     # --- Persian ---
     persian_dict = load_dataset("ordaktaktak/Persian-OCR-230k")
-    persian_train = prepare_dataset(cast(Dataset, persian_dict["train"]).rename_column("fname", "image"))
-    persian_test = prepare_dataset(cast(Dataset, persian_dict["test"]).rename_column("fname", "image"))
+    persian_train = prepare_dataset(
+        cast(Dataset, persian_dict["train"]).rename_column("fname", "image")
+    )
+    persian_test = prepare_dataset(
+        cast(Dataset, persian_dict["test"]).rename_column("fname", "image")
+    )
 
     # --- Urdu ---
-    nastaliq = prepare_dataset(cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train")))
-    naskh = prepare_dataset(cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train")))
-    urdu_news = prepare_dataset(cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train")))
-    urdu_news_test = prepare_dataset(cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test")))
-    urdu_news_val = prepare_dataset(cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation")))
+    nastaliq = prepare_dataset(
+        cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train"))
+    )
+    naskh = prepare_dataset(
+        cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train"))
+    )
+    urdu_news = prepare_dataset(
+        cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train"))
+    )
+    urdu_news_test = prepare_dataset(
+        cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test"))
+    )
+    urdu_news_val = prepare_dataset(
+        cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation"))
+    )
 
     # --- Kannada ---
-    kannada_train = prepare_dataset(cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="train")))
-    kannada_val = prepare_dataset(cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="validation")))
-    kannada_test = prepare_dataset(cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="test")))
+    kannada_train = prepare_dataset(
+        cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="train"))
+    )
+    kannada_val = prepare_dataset(
+        cast(
+            Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="validation")
+        )
+    )
+    kannada_test = prepare_dataset(
+        cast(Dataset, load_dataset("darknight054/indic-mozhi-ocr", "kannada", split="test"))
+    )
     kannada_df_test = interleave_datasets([kannada_val, kannada_test])
 
     test_dataset = interleave_datasets(

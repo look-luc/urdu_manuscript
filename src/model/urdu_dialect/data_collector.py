@@ -1,20 +1,4 @@
-import math
-import urllib.request
-
-import numpy as np
-import torch
-import torch.nn.functional as F
-import torchvision.io as torchvision_io
 from qwen_vl_utils import process_vision_info
-from torchvision.io import ImageReadMode
-from torchvision.transforms.functional import to_pil_image
-
-
-def _fetch_url_bytes(url: str, timeout: int = 10) -> bytes:
-    """Downloads raw bytes from an HTTP/HTTPS image URL."""
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
-        return response.read()
 
 
 class QwenDataCollator:
@@ -27,10 +11,11 @@ class QwenDataCollator:
     def __call__(self, features):
         text_str = []
         imgs = []
+        prompt_lens = []
 
         for feature in features:
             raw_img = feature.get("image") if "image" in feature else feature.get("images")
-            raw_txt = feature.get("text") if "text" in feature
+            raw_txt = feature.get("text") if "text" in feature else ""
             if raw_img is None:
                 continue
 
@@ -52,6 +37,13 @@ class QwenDataCollator:
                     "content": [{"type": "text", "text": raw_txt}],
                 },
             ]
+
+            prompt_messages = [messages[0]]
+            prompt_text = self.processor.apply_chat_template(
+                prompt_messages, tokenize=False, add_generation_prompt=True
+            )
+            prompt_tokens = self.processor.tokenizer(prompt_text, return_tensors="pt")["input_ids"]
+            prompt_lens.append(prompt_tokens.shape[1])
 
             image_inputs, _ = process_vision_info(messages)
 
@@ -78,7 +70,12 @@ class QwenDataCollator:
         )
 
         labels = batch["input_ids"].clone()
-        labels[labels == self.processor.tokenizer.pad_token_id] = -100
+        pad_id = self.processor.tokenizer.pad_token_id
+
+        for idx, p_len in enumerate(prompt_lens):
+            labels[idx, :p_len] = -100
+
+        labels[labels == pad_id] = -100
         batch["labels"] = labels
 
         return batch

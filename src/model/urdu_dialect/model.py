@@ -29,13 +29,11 @@ f1_metric = load("f1")
 
 
 class unification_urdu_lang_model:
-
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
         prompt: str = """
-            You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.
-            Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
+            You are an expert multilingual OCR system specializing in high-accuracy transcription of Kannada, Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left (for Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian) and left to right (for Kanada), maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
         """,
         batch_size: int = 64,
@@ -94,10 +92,6 @@ class unification_urdu_lang_model:
         return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
-        torch.backends.cudnn.enabled = False
-        torch.backends.cudnn.benchmark = False
-        torch.cuda.set_device(0)
-
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
 
@@ -109,12 +103,12 @@ class unification_urdu_lang_model:
 
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            device_map=self.device,
+            device_map="auto",
             attn_implementation="sdpa",
             torch_dtype=torch.bfloat16,
         )
-        self.min_pixels = 56*56
-        self.max_pixels = 512 * 28 * 28
+        self.min_pixels = 128 * 56 * 56
+        self.max_pixels = 1280 * 28 * 28
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
@@ -144,10 +138,11 @@ class unification_urdu_lang_model:
             max_steps=2500,
             eval_strategy="steps",
             eval_steps=500,
-            predict_with_generate=False,
-            generation_max_length=512,
             bf16=True,
             remove_unused_columns=False,
+            max_grad_norm=1.0,
+            warmup_ratio=0.05,
+            lr_scheduler_type="cosine"
         )
 
         trainer = Trainer(
@@ -155,7 +150,12 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=QwenDataCollator(self.processor, prompt=self.prompt, min_pixels=self.min_pixels, max_pixels=self.max_pixels),
+            data_collator=QwenDataCollator(
+                self.processor,
+                prompt=self.prompt,
+                min_pixels=self.min_pixels,
+                max_pixels=self.max_pixels,
+            ),
             compute_metrics=self._compute_metrics,
         )
 
