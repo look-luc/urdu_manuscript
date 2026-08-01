@@ -1,4 +1,3 @@
-import math
 import urllib.request
 
 import numpy as np
@@ -12,9 +11,7 @@ from torchvision.transforms.functional import to_pil_image
 
 def _fetch_url_bytes(url: str, timeout: int = 10) -> bytes:
     """Downloads raw bytes from an HTTP/HTTPS image URL."""
-    req = urllib.request.Request(
-        url, headers={"User-Agent": "Mozilla/5.0"}
-    )
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
 
@@ -41,7 +38,6 @@ class QwenDataCollator:
         return str(val) if val is not None else ""
 
     def _pad_img_ten(self, img, fill_value=255):
-        channels = img.shape[0]
         h = img.shape[1]
         w = img.shape[2]
 
@@ -49,9 +45,8 @@ class QwenDataCollator:
             return img
 
         aspect_ratio = w / h
-
-        max_safe_ratio = self.min_pixels / (28 * 28)
-        min_safe_ratio = (28 * 28) / self.min_pixels
+        max_safe_ratio = 3.0
+        min_safe_ratio = 1.0 / 3.0
 
         pad_left, pad_right, pad_top, pad_bottom = 0, 0, 0, 0
 
@@ -69,13 +64,14 @@ class QwenDataCollator:
         curr_h = h + pad_top + pad_bottom
         curr_w = w + pad_left + pad_right
 
-        if curr_h < 56:
-            diff_h = 56 - curr_h
+        # Enforce 112px canvas lower bound to ensure smart_resize >= 28px
+        if curr_h < 112:
+            diff_h = 112 - curr_h
             pad_top += diff_h // 2
             pad_bottom += diff_h - (diff_h // 2)
 
-        if curr_w < 56:
-            diff_w = 56 - curr_w
+        if curr_w < 112:
+            diff_w = 112 - curr_w
             pad_left += diff_w // 2
             pad_right += diff_w - (diff_w // 2)
 
@@ -153,34 +149,28 @@ class QwenDataCollator:
                 img_tensor = img_tensor.to(torch.uint8)
 
             img_tensor = self._pad_img_ten(img_tensor, fill_value=255)
-
             pil_img = to_pil_image(img_tensor)
 
             target_text = self._extract_text_string(feature.get("text"))
 
-            img_content = {
-                "type": "image",
-                "image": pil_img,
-                "min_pixels": self.min_pixels,
-                "max_pixels": self.max_pixels,
-            }
-
-            text_content = {
-                "type": "text",
-                "text": self.prompt,
-            }
-
-            user_message = {
-                "role": "user",
-                "content": [img_content, text_content],
-            }
-
-            assistant_message = {
-                "role": "assistant",
-                "content": [{"type": "text", "text": target_text}],
-            }
-
-            messages = [user_message, assistant_message]
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "image": pil_img,
+                            "min_pixels": self.min_pixels,
+                            "max_pixels": self.max_pixels,
+                        },
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": target_text}],
+                },
+            ]
 
             image_inputs, _ = process_vision_info(messages)
 
@@ -198,32 +188,27 @@ class QwenDataCollator:
             text_str.append(formatted_text)
 
         if len(imgs) == 0:
-            dummy_tensor = torch.full((3, 56, 56), 255, dtype=torch.uint8)
+            dummy_tensor = torch.full((3, 112, 112), 255, dtype=torch.uint8)
             dummy_pil = to_pil_image(dummy_tensor)
 
-            img_content = {
-                "type": "image",
-                "image": dummy_pil,
-                "min_pixels": self.min_pixels,
-                "max_pixels": self.max_pixels,
-            }
-
-            text_content = {
-                "type": "text",
-                "text": self.prompt,
-            }
-
-            user_message = {
-                "role": "user",
-                "content": [img_content, text_content],
-            }
-
-            assistant_message = {
-                "role": "assistant",
-                "content": [{"type": "text", "text": ""}],
-            }
-
-            dummy_messages = [user_message, assistant_message]
+            dummy_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "image": dummy_pil,
+                            "min_pixels": self.min_pixels,
+                            "max_pixels": self.max_pixels,
+                        },
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": ""}],
+                },
+            ]
 
             dummy_image_inputs, _ = process_vision_info(dummy_messages)
 
