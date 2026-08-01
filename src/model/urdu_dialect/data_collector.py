@@ -124,32 +124,41 @@ class QwenDataCollator:
                 img_tensor, min_dim=28, max_aspect_ratio=4.0
             )
 
+            # Write preprocessed tensor to a temporary file for apply_chat_template
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_file:
+                temp_img_path = tmp_file.name
+
+            torchvision_io.write_png(img_tensor, temp_img_path)
+
+            try:
+                target_text = self._extract_text_string(feature.get("text"))
+
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image", "image": temp_img_path},
+                            {"type": "text", "text": self.prompt},
+                        ],
+                    },
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "text", "text": target_text},
+                        ],
+                    },
+                ]
+
+                formatted_text = self.processor.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=False,
+                )
+            finally:
+                if os.path.exists(temp_img_path):
+                    os.remove(temp_img_path)
+
             img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
-
-            target_text = self._extract_text_string(feature.get("text"))
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "image", "image": img_numpy},
-                        {"type": "text", "text": self.prompt},
-                    ],
-                },
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": target_text},
-                    ],
-                },
-            ]
-
-            formatted_text = self.processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-            )
-
             imgs.append(img_numpy)
             text_str.append(formatted_text)
 
