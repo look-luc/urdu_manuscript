@@ -54,7 +54,6 @@ class QwenDataCollator:
         return str(val) if val is not None else ""
 
     def _load_image_tensor(self, raw_img) -> torch.Tensor | None:
-        """Resolves dictionaries, local file paths, remote URLs, and tensors into (C, H, W) uint8 Tensors."""
         if isinstance(raw_img, dict):
             if "bytes" in raw_img and raw_img["bytes"]:
                 byte_tensor = torch.frombuffer(
@@ -65,14 +64,18 @@ class QwenDataCollator:
                 path_str = str(raw_img["path"])
                 if path_str.startswith(("http://", "https://")):
                     url_bytes = _fetch_url_bytes(path_str)
-                    byte_tensor = torch.frombuffer(byte_tensor_bytes(url_bytes), dtype=torch.uint8) if False else torch.frombuffer(url_bytes, dtype=torch.uint8)
+                    byte_tensor = torch.frombuffer(
+                        bytearray(url_bytes), dtype=torch.uint8
+                    )
                     return io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
                 return io.read_image(path_str, mode=ImageReadMode.RGB)
 
         elif isinstance(raw_img, str):
             if raw_img.startswith(("http://", "https://")):
                 url_bytes = _fetch_url_bytes(raw_img)
-                byte_tensor = torch.frombuffer(url_bytes, dtype=torch.uint8)
+                byte_tensor = torch.frombuffer(
+                    bytearray(url_bytes), dtype=torch.uint8
+                )
                 return io.decode_image(byte_tensor, mode=ImageReadMode.RGB)
             return io.read_image(raw_img, mode=ImageReadMode.RGB)
 
@@ -96,19 +99,17 @@ class QwenDataCollator:
             try:
                 img_tensor = self._load_image_tensor(raw_img)
             except Exception:
-                # Catch network failures or corrupted image files gracefully
                 continue
 
             if img_tensor is None:
                 continue
 
-            # 1. Enforce 3D (C, H, W) layout
+            # Enforce 3D (C, H, W) layout
             if img_tensor.ndim == 2:
                 img_tensor = img_tensor.unsqueeze(0)
             elif img_tensor.ndim == 3 and img_tensor.shape[2] in [1, 3, 4]:
                 img_tensor = img_tensor.permute(2, 0, 1)
 
-            # 2. Standardize channels to 3-channel RGB uint8
             if img_tensor.shape[0] == 1:
                 img_tensor = img_tensor.repeat(3, 1, 1)
             elif img_tensor.shape[0] == 4:
@@ -117,22 +118,22 @@ class QwenDataCollator:
             if img_tensor.dtype != torch.uint8:
                 img_tensor = img_tensor.to(torch.uint8)
 
-            # 3. Canvas padding for minimum dimension constraints
             img_tensor = _ensure_min_dimensions_tensor(
                 img_tensor, min_dim=28, max_aspect_ratio=4.0
             )
 
-            # Convert (3, H, W) Tensor -> (H, W, 3) uint8 NumPy Array for HF Processor
+            # Convert (3, H, W) uint8 Tensor -> (H, W, 3) uint8 NumPy Array
             img_numpy = img_tensor.permute(1, 2, 0).cpu().numpy()
 
             target_text = self._extract_text_string(feature.get("text"))
 
+            # KEY FIX: Pass img_numpy into 'image' parameter of chat template
             messages = [
                 {
                     "role": "user",
                     "content": [
                         {"type": "text", "text": self.prompt},
-                        {"type": "image"},
+                        {"type": "image", "image": img_numpy},
                     ],
                 },
                 {
@@ -152,9 +153,35 @@ class QwenDataCollator:
             imgs.append(img_numpy)
             text_str.append(formatted_text)
 
+        # Fallback guard to prevent N=0 batch crash if all images fail
+        if len(imgs) == 0:
+            dummy_np = np.full((28, 28, 3), 255, dtype=np.uint8)
+            dummy_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": self.prompt},
+                        {"type": "image", "image": dummy_np},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": ""},
+                    ],
+                },
+            ]
+            dummy_text = self.processor.apply_chat_template(
+                dummy_messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+            imgs.append(dummy_np)
+            text_str.append(dummy_text)
+
         batch = self.processor(
             text=text_str,
-            images=imgs if len(imgs) > 0 else None,
+            images=imgs,
             padding=True,
             return_tensors="pt",
         )
