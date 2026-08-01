@@ -45,14 +45,14 @@ class QwenDataCollator:
         h = img.shape[1]
         w = img.shape[2]
 
-        min_edge = int(math.sqrt(self.min_pixels))
+        min_edge = max(56, int(math.sqrt(self.min_pixels)))
         target_h = max(h, min_edge)
         target_w = max(w, min_edge)
 
-        if target_h % min_edge != 0:
-            target_h += min_edge - (target_h % min_edge)
-        if target_w % min_edge != 0:
-            target_w += min_edge - (target_w % min_edge)
+        if target_h % 28 != 0:
+            target_h += 28 - (target_h % 28)
+        if target_w % 28 != 0:
+            target_w += 28 - (target_w % 28)
 
         pad_h = target_h - h
         pad_w = target_w - w
