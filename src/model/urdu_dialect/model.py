@@ -6,6 +6,7 @@ import evaluate
 import numpy as np
 import torch
 from evaluate import load
+from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoConfig,
@@ -115,6 +116,26 @@ class unification_urdu_lang_model:
             min_pixels=self.min_pixels,
             max_pixels=self.max_pixels,
         )
+
+        peft_config = LoraConfig(
+            r=16,
+            lora_alpha=32,
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
+            lora_dropout=0.05,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+
+        model = get_peft_model(model, peft_config)
+        model.print_trainable_parameters()
 
         data = get_datasets()
 
