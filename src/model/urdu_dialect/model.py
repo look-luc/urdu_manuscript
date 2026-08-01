@@ -113,7 +113,7 @@ class unification_urdu_lang_model:
             attn_implementation="sdpa",
             torch_dtype=torch.bfloat16,
         )
-        self.min_pixels = 28 * 28
+        self.min_pixels = 56*56
         self.max_pixels = 512 * 28 * 28
 
         processor = AutoProcessor.from_pretrained(
