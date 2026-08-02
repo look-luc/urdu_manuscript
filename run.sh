@@ -12,16 +12,20 @@
 #SBATCH --mail-type=END,FAIL
 
 export HF_TOKEN="${HF_TOKEN}"
-export HF_HOME="/projects/$USER/.cache/huggingface"
-export EVALUATE_CACHE_DIR="/projects/$USER/.cache/evaluate"
-export TRANSFORMERS_CACHE="/projects/$USER/.cache/transformers"
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+export SCRATCH_DIR="/scratch/alpine/$USER"
+export HF_HOME="$SCRATCH_DIR/.cache/huggingface"
+export HF_DATASETS_CACHE="$SCRATCH_DIR/.cache/huggingface/datasets"
+export EVALUATE_CACHE_DIR="$SCRATCH_DIR/.cache/evaluate"
+export TRANSFORMERS_CACHE="$SCRATCH_DIR/.cache/transformers"
+export TMPDIR="$SCRATCH_DIR/tmp"
+
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TORCH_CUDA_IPC_DISABLE=1
 export TOKENIZERS_PARALLELISM=false
 export NCCL_P2P_DISABLE=1
 
-mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE"
+mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR"
 
 module purge
 module load anaconda
