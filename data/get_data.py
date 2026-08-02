@@ -13,14 +13,24 @@ from datasets import (
 def standardize_stream(
     ds: IterableDataset, img_col: str = "image", txt_col: str = "text"
 ) -> IterableDataset:
-    """Transforms samples to 'image' and 'text' keys dynamically before schema casting."""
+    candidate_img_cols = [img_col, "image", "image_path", "img", "file_name"]
+    candidate_txt_cols = [txt_col, "text", "label", "caption", "transcription"]
+
     def transform_fn(example):
+        # Resolve image key dynamically
+        actual_img_col = next((k for k in candidate_img_cols if k in example), None)
+        actual_txt_col = next((k for k in candidate_txt_cols if k in example), None)
+
+        if actual_img_col is None:
+            raise KeyError(f"None of {candidate_img_cols} found in sample keys: {list(example.keys())}")
+        if actual_txt_col is None:
+            raise KeyError(f"None of {candidate_txt_cols} found in sample keys: {list(example.keys())}")
+
         return {
-            "image": example[img_col],
-            "text": str(example[txt_col]),
+            "image": example[actual_img_col],
+            "text": str(example[actual_txt_col]),
         }
 
-    # Transform keys dynamically per example
     ds = ds.map(transform_fn)
     ds = ds.select_columns(["image", "text"])
 
@@ -58,7 +68,6 @@ def get_datasets(buffer_size: int = 100):
         IterableDataset,
         load_dataset("Omarrran/Persian_Pixel", name="full", split="train", streaming=True),
     )
-    persian_pixel = standardize_stream(persian_pixel_raw, img_col="image", txt_col="text")
 
     # --- 3. Urdu Datasets ---
     nastaliq_raw = cast(
