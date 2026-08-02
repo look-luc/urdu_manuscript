@@ -2,7 +2,16 @@ import os
 from typing import cast
 
 import torchvision.transforms.functional as F
-from datasets import IterableDataset, interleave_datasets, load_dataset
+from datasets import (
+    Features,
+    IterableDataset,
+    Value,
+    interleave_datasets,
+    load_dataset,
+)
+from datasets import (
+    Image as HFImage,
+)
 from torchvision.io import ImageReadMode, read_image
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,10 +19,6 @@ IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
 def fix_persian_image_path(example):
-    """Safely resolves relative Persian image paths and loads them as PIL Images.
-
-    This ensures feature schema alignment with remote Hugging Face datasets.
-    """
     if not isinstance(example, dict):
         return None
 
@@ -22,13 +27,14 @@ def fix_persian_image_path(example):
         full_path = os.path.join(IMAGE_BASE_DIR, fname)
         if os.path.exists(full_path):
             try:
-                example["fname"] = F.to_pil_image(read_image(full_path, mode=ImageReadMode.RGB))
+                example["fname"] = F.to_pil_image(
+                    read_image(full_path, mode=ImageReadMode.RGB)
+                )
                 return example
             except Exception:
                 return None
 
     return None
-
 
 def is_valid_example(example):
     """Filters out corrupt, missing, or empty image and text samples."""
@@ -89,11 +95,20 @@ def get_datasets(buffer_size: int = 10000):
         .filter(is_valid_example)
     )
 
+    # Pre-declare feature schema so PyArrow recognizes the PIL Image output from fix_persian_image_path
+    persian_features = Features({
+        "fname": HFImage(),
+        "text": Value("string"),
+    })
+
+    persian_train_raw = cast(
+        IterableDataset,
+        load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
+    )
+    persian_train_raw.info.features = persian_features
+
     persian_train = (
-        cast(
-            IterableDataset,
-            load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
-        )
+        persian_train_raw
         .map(fix_persian_image_path)
         .filter(lambda x: x is not None)
         .rename_column("fname", "image")
@@ -101,11 +116,14 @@ def get_datasets(buffer_size: int = 10000):
         .filter(is_valid_example)
     )
 
+    persian_test_raw = cast(
+        IterableDataset,
+        load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
+    )
+    persian_test_raw.info.features = persian_features
+
     persian_test = (
-        cast(
-            IterableDataset,
-            load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
-        )
+        persian_test_raw
         .map(fix_persian_image_path)
         .filter(lambda x: x is not None)
         .rename_column("fname", "image")
