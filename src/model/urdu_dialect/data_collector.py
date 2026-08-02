@@ -1,95 +1,77 @@
-import numpy as np
-from qwen_vl_utils import process_vision_info
+import torch
 
 
-class QwenDataCollator:
-    def __init__(self, processor, prompt: str, min_pixels: int, max_pixels: int):
+class Data_Collector:
+    def __init__(self, processor):
         self.processor = processor
-        self.prompt = prompt
-        self.min_pixels = min_pixels
-        self.max_pixels = max_pixels
+        self.pad_token_id = self.processor.tokenizer.pad_token_id
+
+        # Tokenize the assistant header delimiter
+        assistant_tokens = self.processor.tokenizer.encode(
+            "<|im_start|>assistant\n", add_special_tokens=False
+        )
+        self.assistant_start_tensor = torch.tensor(assistant_tokens, dtype=torch.long)
+
+    def _find_subsequence(self, sequence: torch.Tensor, pattern: torch.Tensor) -> int:
+        """Efficiently finds starting index of a 1D target tensor pattern in a 1D sequence tensor."""
+        seq_len = sequence.size(0)
+        pat_len = pattern.size(0)
+
+        if pat_len > seq_len:
+            return -1
+
+        # Sliding window view over the sequence
+        windows = sequence.unfold(0, pat_len, 1)
+        matches = (windows == pattern).all(dim=1)
+        indices = torch.nonzero(matches, as_tuple=True)[0]
+
+        if len(indices) > 0:
+            return indices[0].item()
+        return -1
 
     def __call__(self, features):
-        text_str = []
-        imgs = []
-        prompt_lens = []
+        input_ids_list = [feature["input_ids"] for feature in features]
+        attention_mask_list = [feature["attention_mask"] for feature in features]
 
-        for feature in features:
-            if not feature or not isinstance(feature, dict):
-                continue
+        pixel_values = [feature["pixel_values"] for feature in features]
+        image_grid_thw = [feature["image_grid_thw"] for feature in features]
 
-            raw_img = feature.get("image") if "image" in feature else feature.get("images")
-            raw_txt = feature.get("text") if "text" in feature else ""
-
-            if raw_img is None:
-                continue
-
-            if hasattr(raw_img, "__array__") and not isinstance(raw_img, np.ndarray):
-                raw_img = np.asarray(raw_img)
-
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "image": raw_img,  # Accepts np.ndarray directly
-                            "min_pixels": self.min_pixels,
-                            "max_pixels": self.max_pixels,
-                        },
-                        {"type": "text", "text": self.prompt},
-                    ],
-                },
-                {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": raw_txt}],
-                },
-            ]
-
-            prompt_messages = [messages[0]]
-            prompt_text = self.processor.apply_chat_template(
-                prompt_messages, tokenize=False, add_generation_prompt=True
-            )
-            prompt_tokens = self.processor.tokenizer(prompt_text, return_tensors="pt")["input_ids"]
-            prompt_lens.append(prompt_tokens.shape[1])
-
-            image_inputs, _ = process_vision_info(messages)
-
-            formatted_text = self.processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False,
-            )
-
-            if image_inputs:
-                imgs.extend(image_inputs)
-            else:
-                imgs.append(raw_img)
-
-            text_str.append(formatted_text)
-
-        if not text_str or not imgs:
-            return {}
-
-        batch = self.processor(
-            text=text_str,
-            images=imgs,
-            min_pixels=self.min_pixels,
-            max_pixels=self.max_pixels,
+        # Dynamic Padding for text sequences
+        padded_inputs = self.processor.tokenizer.pad(
+            {
+                "input_ids": input_ids_list,
+                "attention_mask": attention_mask_list,
+            },
             padding=True,
             return_tensors="pt",
         )
 
-        if batch is None:
-            return {}
+        input_ids = padded_inputs["input_ids"]
+        attention_mask = padded_inputs["attention_mask"]
 
-        labels = batch["input_ids"].clone()
-        pad_id = self.processor.tokenizer.pad_token_id
+        labels = input_ids.clone()
+        pattern_len = self.assistant_start_tensor.size(0)
 
-        for idx, p_len in enumerate(prompt_lens):
-            labels[idx, :p_len] = -100
+        # Mask prompt tokens row by row
+        for i in range(len(features)):
+            row_labels = labels[i]
+            match_idx = self._find_subsequence(row_labels, self.assistant_start_tensor)
 
-        labels[labels == pad_id] = -100
-        batch["labels"] = labels
+            if match_idx != -1:
+                # Mask up to and including the assistant start marker
+                mask_end = match_idx + pattern_len
+                labels[i, :mask_end] = -100
+            else:
+                # Fallback: if header is missing, mask the full sequence to avoid prompt leakage
+                labels[i, :] = -100
 
-        return batch
+        # CRITICAL: Mask all padding tokens so loss isn't computed on pad_token_id
+        labels[labels == self.pad_token_id] = -100
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+            "pixel_values": torch.cat(pixel_values, dim=0),
+            "image_grid_thw": torch.cat(image_grid_thw, dim=0),
+        }
