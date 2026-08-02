@@ -39,12 +39,24 @@ def get_datasets(buffer_size: int = 10000):
     parsynth_train_raw = cast(
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
-    ).rename_column("image_path", "image")
+    )
+    p_train_cols = parsynth_train_raw.column_names or []
+    if "image" not in p_train_cols:
+        if "image_path" in p_train_cols:
+            parsynth_train_raw = parsynth_train_raw.rename_column("image_path", "image")
+        elif "img" in p_train_cols:
+            parsynth_train_raw = parsynth_train_raw.rename_column("img", "image")
 
     parsynth_test_raw = cast(
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
     )
+    p_test_cols = parsynth_test_raw.column_names or []
+    if "image" not in p_test_cols:
+        if "image_path" in p_test_cols:
+            parsynth_test_raw = parsynth_test_raw.rename_column("image_path", "image")
+        elif "img" in p_test_cols:
+            parsynth_test_raw = parsynth_test_raw.rename_column("img", "image")
 
     parsynth_test = parsynth_test_raw
 
