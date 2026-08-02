@@ -3,14 +3,9 @@ from typing import cast
 
 import torchvision.transforms.functional as F
 from datasets import (
-    Features,
     IterableDataset,
-    Value,
     interleave_datasets,
     load_dataset,
-)
-from datasets import (
-    Image as HFImage,
 )
 from torchvision.io import ImageReadMode, read_image
 
@@ -19,43 +14,47 @@ IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
 def fix_persian_image_path(example):
+    """Safely loads Persian images and standardizes dict keys to 'image' and 'text'."""
     if not isinstance(example, dict):
-        return {"fname": None, "text": None}
+        return {"image": None, "text": None}
 
-    fname = example.get("fname")
+    txt = example.get("text")
+    fname = example.get("fname") or example.get("image_path") or example.get("image")
+
+    img = None
     if isinstance(fname, str):
         full_path = os.path.join(IMAGE_BASE_DIR, fname)
         if os.path.exists(full_path):
             try:
-                example["fname"] = F.to_pil_image(
+                img = F.to_pil_image(
                     read_image(full_path, mode=ImageReadMode.RGB)
                 )
-                return example
             except Exception:
-                pass
+                img = None
 
-    example["fname"] = None
-    return example
+    return {"image": img, "text": txt}
 
 
 def fix_parsynth_image_path(example):
+    """Safely loads Parsynth images and standardizes dict keys to 'image' and 'text'."""
     if not isinstance(example, dict):
-        return {"image_path": None, "text": None}
+        return {"image": None, "text": None}
 
-    img_path = example.get("image_path")
+    txt = example.get("text")
+    img_path = example.get("image_path") or example.get("fname") or example.get("image")
+
+    img = None
     if isinstance(img_path, str):
         full_path = os.path.join(SCRIPT_DIR, img_path)
         if os.path.exists(full_path):
             try:
-                example["image_path"] = F.to_pil_image(
+                img = F.to_pil_image(
                     read_image(full_path, mode=ImageReadMode.RGB)
                 )
-                return example
             except Exception:
-                pass
+                img = None
 
-    example["image_path"] = None
-    return example
+    return {"image": img, "text": txt}
 
 
 def is_valid_example(example):
@@ -97,21 +96,14 @@ def get_datasets(buffer_size: int = 10000):
     print("Finished loading Arabic dataset.")
 
     # --- 2. Farsi / Persian ---
-    parsynth_features = Features({
-        "image_path": HFImage(),
-        "text": Value("string"),
-    })
-
     parsynth_train_raw = cast(
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
     )
-    parsynth_train_raw.info.features = parsynth_features
 
     parsynth_train = (
         parsynth_train_raw
         .map(fix_parsynth_image_path)
-        .rename_column("image_path", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
@@ -120,31 +112,22 @@ def get_datasets(buffer_size: int = 10000):
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
     )
-    parsynth_test_raw.info.features = parsynth_features
 
     parsynth_test = (
         parsynth_test_raw
         .map(fix_parsynth_image_path)
-        .rename_column("image_path", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
-
-    persian_features = Features({
-        "fname": HFImage(),
-        "text": Value("string"),
-    })
 
     persian_train_raw = cast(
         IterableDataset,
         load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
     )
-    persian_train_raw.info.features = persian_features
 
     persian_train = (
         persian_train_raw
         .map(fix_persian_image_path)
-        .rename_column("fname", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
@@ -153,12 +136,10 @@ def get_datasets(buffer_size: int = 10000):
         IterableDataset,
         load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
     )
-    persian_test_raw.info.features = persian_features
 
     persian_test = (
         persian_test_raw
         .map(fix_persian_image_path)
-        .rename_column("fname", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
