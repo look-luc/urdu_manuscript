@@ -167,7 +167,7 @@ class unification_urdu_lang_model:
             remove_unused_columns=False,
             max_grad_norm=1.0,
             warmup_ratio=0.05,
-            lr_scheduler_type="cosine"
+            lr_scheduler_type="cosine",
         )
 
         trainer = Trainer(

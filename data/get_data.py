@@ -17,6 +17,8 @@ def fix_persian_image_path(example):
             example["fname"] = full_path
         else:
             example["fname"] = None
+    else:
+        example["fname"] = None
     return example
 
 
@@ -36,7 +38,7 @@ def is_valid_example(example):
     return True
 
 
-def get_datasets():
+def get_datasets(num_proc: int = 4):
     print("Loading datasets in non-streaming mode (downloading/caching locally)...")
 
     # --- 1. Arabic ---
@@ -54,7 +56,7 @@ def get_datasets():
 
     ds_arabic = (
         sard_raw.select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
     print("Finished loading Arabic dataset.")
 
@@ -63,34 +65,34 @@ def get_datasets():
         cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="train"))
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     parsynth_test = (
         cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="test"))
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     persian_train = (
         cast(Dataset, load_dataset("ordaktaktak/Persian-OCR-230k", split="train"))
-        .map(fix_persian_image_path, num_proc=4)
-        .filter(lambda x: x.get("fname") is not None, num_proc=4)
+        .map(fix_persian_image_path, num_proc=num_proc)
+        .filter(lambda x: x.get("fname") is not None, num_proc=num_proc)
         .rename_column("fname", "image")
         .cast_column("image", HFImage())
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     persian_test = (
         cast(Dataset, load_dataset("ordaktaktak/Persian-OCR-230k", split="test"))
-        .map(fix_persian_image_path, num_proc=4)
-        .filter(lambda x: x.get("fname") is not None, num_proc=4)
+        .map(fix_persian_image_path, num_proc=num_proc)
+        .filter(lambda x: x.get("fname") is not None, num_proc=num_proc)
         .rename_column("fname", "image")
         .cast_column("image", HFImage())
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     persian_train_combined = interleave_datasets(
@@ -102,58 +104,33 @@ def get_datasets():
 
     # --- 3. Urdu ---
     nastaliq = (
-        cast(
-            Dataset,
-            load_dataset(
-                "PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train"
-            ),
-        )
+        cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train"))
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     naskh = (
-        cast(
-            Dataset,
-            load_dataset(
-                "PuristanLabs1/urdu-ocr-1M", "naskh", split="train"
-            ),
-        )
+        cast(Dataset, load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train"))
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     urdu_news = (
-        cast(
-            Dataset,
-            load_dataset(
-                "oddadmix/qari-0.2.2-news-dataset-large", split="train"
-            ),
-        )
+        cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train"))
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     urdu_news_test = (
-        cast(
-            Dataset,
-            load_dataset(
-                "oddadmix/qari-0.2.2-news-dataset-large", split="test"
-            ),
-        )
+        cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test"))
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
 
     urdu_news_val = (
-        cast(
-            Dataset,
-            load_dataset(
-                "oddadmix/qari-0.2.2-news-dataset-large", split="validation"
-            ),
-        )
+        cast(Dataset, load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation"))
         .select_columns(["image", "text"])
-        .filter(is_valid_example, num_proc=4)
+        .filter(is_valid_example, num_proc=num_proc)
     )
     print("Finished loading Urdu datasets.")
 
