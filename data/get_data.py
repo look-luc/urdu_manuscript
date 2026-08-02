@@ -36,6 +36,26 @@ def fix_persian_image_path(example):
 
     return None
 
+
+def fix_parsynth_image_path(example):
+    if not isinstance(example, dict):
+        return None
+
+    img_path = example.get("image_path")
+    if isinstance(img_path, str):
+        full_path = os.path.join(SCRIPT_DIR, img_path)
+        if os.path.exists(full_path):
+            try:
+                example["image_path"] = F.to_pil_image(
+                    read_image(full_path, mode=ImageReadMode.RGB)
+                )
+                return example
+            except Exception:
+                return None
+
+    return None
+
+
 def is_valid_example(example):
     """Filters out corrupt, missing, or empty image and text samples."""
     if not isinstance(example, dict):
@@ -75,27 +95,41 @@ def get_datasets(buffer_size: int = 10000):
     print("Finished loading Arabic dataset.")
 
     # --- 2. Farsi / Persian ---
+    parsynth_features = Features({
+        "image_path": HFImage(),
+        "text": Value("string"),
+    })
+
+    parsynth_train_raw = cast(
+        IterableDataset,
+        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
+    )
+    parsynth_train_raw.info.features = parsynth_features
+
     parsynth_train = (
-        cast(
-            IterableDataset,
-            load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
-        )
+        parsynth_train_raw
+        .map(fix_parsynth_image_path)
+        .filter(lambda x: x is not None)
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
+
+    parsynth_test_raw = cast(
+        IterableDataset,
+        load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
+    )
+    parsynth_test_raw.info.features = parsynth_features
 
     parsynth_test = (
-        cast(
-            IterableDataset,
-            load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
-        )
+        parsynth_test_raw
+        .map(fix_parsynth_image_path)
+        .filter(lambda x: x is not None)
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
 
-    # Pre-declare feature schema so PyArrow recognizes the PIL Image output from fix_persian_image_path
     persian_features = Features({
         "fname": HFImage(),
         "text": Value("string"),
