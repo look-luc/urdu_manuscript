@@ -1,173 +1,114 @@
 import os
-from typing import Tuple, Union
+from typing import cast
 
-import numpy as np
-import torch
-import torchvision.io as tv_io
-from datasets import (
-    IterableDataset,
-    IterableDatasetDict,
-    interleave_datasets,
-    load_dataset,
-)
+from datasets import IterableDataset, interleave_datasets, load_dataset
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k", "Images")
-if not os.path.exists(IMAGE_BASE_DIR):
-    IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
+IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
-def load_as_tensor(
-    raw_img: Union[str, torch.Tensor, dict, None], default_dir: str = ""
-) -> Union[torch.Tensor, None]:
-    """Safely converts any image representation into a 3-channel RGB PyTorch Tensor [3, H, W]."""
-    if raw_img is None:
-        return None
-
-    if isinstance(raw_img, torch.Tensor):
-        if raw_img.ndim == 3 and raw_img.shape[0] != 3 and raw_img.shape[2] == 3:
-            return raw_img.permute(2, 0, 1).contiguous()
-        return raw_img
-
-    if isinstance(raw_img, str):
-        path = (
-            os.path.join(default_dir, raw_img)
-            if default_dir and not os.path.isabs(raw_img)
-            else raw_img
-        )
-        if os.path.exists(path):
-            file_bytes = tv_io.read_file(path)
-            return tv_io.decode_image(file_bytes, mode=tv_io.ImageReadMode.RGB)
-        return None
-
-    if isinstance(raw_img, dict) and raw_img.get("bytes") is not None:
-        byte_tensor = torch.frombuffer(raw_img["bytes"], dtype=torch.uint8)
-        return tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
-
-    if hasattr(raw_img, "convert"):
-        np_arr = np.array(raw_img.convert("RGB"))
-        return torch.from_numpy(np_arr).permute(2, 0, 1).contiguous()
-
-    return None
-
-
-def transform_example(example: dict, default_img_dir: str = "") -> dict:
-    """Dynamically converts image paths/objects to PyTorch Tensors and standardizes text fields."""
-    raw_img = (
-        example.get("image")
-        if example.get("image") is not None
-        else example.get("image_path")
-        if example.get("image_path") is not None
-        else example.get("img")
-        if example.get("img") is not None
-        else example.get("fname")
-    )
-
-    image_tensor = load_as_tensor(raw_img, default_dir=default_img_dir)
-
-    text = (
-        example.get("text")
-        or example.get("transcription")
-        or example.get("label")
-        or ""
-    )
-
-    return {"image": image_tensor, "text": text}
-
-
-def get_streaming_split_pair(
-    ds_obj: Union[IterableDatasetDict, IterableDataset],
-    test_count: int = 1000,
-) -> Tuple[IterableDataset, IterableDataset]:
-    """Extracts train and test streams lazily using take/skip if test split does not exist."""
-    if isinstance(ds_obj, IterableDatasetDict) or hasattr(ds_obj, "keys"):
-        if "test" in ds_obj:
-            return ds_obj["train"], ds_obj["test"]
-        elif "validation" in ds_obj:
-            return ds_obj["train"], ds_obj["validation"]
-        elif "val" in ds_obj:
-            return ds_obj["train"], ds_obj["val"]
-        else:
-            train_stream = ds_obj["train"]
-            return train_stream.skip(test_count), train_stream.take(test_count)
-    else:
-        return ds_obj.skip(test_count), ds_obj.take(test_count)
-
-
-def get_datasets():
-    print("Loading streaming datasets...")
+def get_datasets(buffer_size: int = 100):
+    """Loads dataset streams lazily with a configurable shuffle buffer size."""
+    print(f"Loading datasets in streaming mode (buffer_size={buffer_size})...")
 
     # --- 1. Arabic ---
-    sard_raw = load_dataset(
-        "riotu-lab/SARD", split="Traditional_Arabic", streaming=True
+    sard_raw = cast(
+        IterableDataset,
+        load_dataset("riotu-lab/SARD", split="Traditional_Arabic", streaming=True),
     )
-    arabic_train = sard_raw.skip(1000).map(transform_example)
-    arabic_test = sard_raw.take(1000).map(transform_example)
+    cols = sard_raw.column_names or []
+
+    if "text" not in cols:
+        if "label" in cols:
+            sard_raw = sard_raw.rename_column("label", "text")
+        elif "transcription" in cols:
+            sard_raw = sard_raw.rename_column("transcription", "text")
+
+    if "image" not in cols and "img" in cols:
+        sard_raw = sard_raw.rename_column("img", "image")
+
+    ds_arabic = sard_raw.select_columns(["image", "text"])
 
     # --- 2. Farsi / Persian ---
-    parsynth_raw = load_dataset("hezarai/parsynth-ocr-200k", streaming=True)
-    parsynth_tr_stream, parsynth_te_stream = get_streaming_split_pair(
-        parsynth_raw, test_count=1000
-    )
-    parsynth_train = parsynth_tr_stream.map(transform_example)
-    parsynth_test = parsynth_te_stream.map(transform_example)
+    parsynth_train_raw = cast(
+        IterableDataset,
+        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
+    ).rename_column("image_path", "image")
 
-    persian_230k_raw = load_dataset("ordaktaktak/Persian-OCR-230k", streaming=True)
-    persian_tr_stream, persian_te_stream = get_streaming_split_pair(
-        persian_230k_raw, test_count=1000
-    )
-    persian_train = persian_tr_stream.map(
-        lambda x: transform_example(x, default_img_dir=IMAGE_BASE_DIR)
-    )
-    persian_test = persian_te_stream.map(
-        lambda x: transform_example(x, default_img_dir=IMAGE_BASE_DIR)
+    parsynth_test = cast(
+        IterableDataset,
+        load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
     )
 
-    farsi_train = interleave_datasets([parsynth_train, persian_train])
-    farsi_test = interleave_datasets([parsynth_test, persian_test])
+    persian_train = cast(
+        IterableDataset,
+        load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
+    ).rename_column("fname", "text")
+
+    persian_test = cast(
+        IterableDataset,
+        load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
+    ).rename_column("fname", "text")
+
+    persian_train_combined = interleave_datasets(
+        [parsynth_train_raw, persian_train],
+        probabilities=[0.5, 0.5],
+        seed=42,
+    )
 
     # --- 3. Urdu ---
-    nastaliq_ds = load_dataset(
-        "PuristanLabs1/urdu-ocr-1M", "nastaliq", streaming=True
-    )
-    naskh_ds = load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", streaming=True)
-    urdu_news_ds = load_dataset(
-        "oddadmix/qari-0.2.2-news-dataset-large", streaming=True
+    nastaliq = cast(
+        IterableDataset,
+        load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True),
     )
 
-    nas_tr, nas_te = get_streaming_split_pair(nastaliq_ds, test_count=1000)
-    naskh_tr, naskh_te = get_streaming_split_pair(naskh_ds, test_count=1000)
-    news_tr, news_te = get_streaming_split_pair(urdu_news_ds, test_count=1000)
+    naskh = cast(
+        IterableDataset,
+        load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True),
+    )
 
-    urdu_train = interleave_datasets([
-        nas_tr.map(transform_example),
-        naskh_tr.map(transform_example),
-        news_tr.map(transform_example),
-    ])
+    urdu_news = cast(
+        IterableDataset,
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
+    )
 
-    urdu_test = interleave_datasets([
-        nas_te.map(transform_example),
-        naskh_te.map(transform_example),
-        news_te.map(transform_example),
-    ])
+    urdu_news_test = cast(
+        IterableDataset,
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True),
+    )
 
-    train_sources = [arabic_train, farsi_train, urdu_train]
-    test_sources = [arabic_test, farsi_test, urdu_test]
+    urdu_news_val = cast(
+        IterableDataset,
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True),
+    )
 
-    train_probabilities = [0.20, 0.30, 0.50]
-    test_probabilities = [0.20, 0.30, 0.50]
+    test_sources = [
+        ds_arabic.take(500),
+        nastaliq.take(1000),
+        naskh.take(400),
+        urdu_news_test.take(300),
+        parsynth_test.take(400),
+        persian_test.take(400),
+        urdu_news_val.take(300),
+    ]
+
+    test_dataset = interleave_datasets(test_sources, seed=42)
+
+    train_sources = [
+        nastaliq.skip(1000),
+        ds_arabic.skip(500),
+        naskh.skip(400),
+        persian_train_combined,
+        urdu_news,
+    ]
+
+    train_probabilities = [0.55, 0.20, 0.12, 0.08, 0.05]
 
     train_dataset = interleave_datasets(
         datasets=train_sources,
         probabilities=train_probabilities,
+        stopping_strategy="all_exhausted",
         seed=42,
-    ).shuffle(seed=42, buffer_size=10000)
-
-    test_dataset = interleave_datasets(
-        datasets=test_sources,
-        probabilities=test_probabilities,
-        seed=42,
-    )
+    ).shuffle(seed=42, buffer_size=buffer_size)
 
     return {"train": train_dataset, "test": test_dataset}
