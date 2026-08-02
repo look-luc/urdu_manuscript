@@ -13,13 +13,15 @@ from datasets import (
 def standardize_stream(
     ds: IterableDataset, img_col: str = "image", txt_col: str = "text"
 ) -> IterableDataset:
-    cols = list(ds.features.keys()) if ds.features is not None else (ds.column_names or [])
+    """Transforms samples to 'image' and 'text' keys dynamically before schema casting."""
+    def transform_fn(example):
+        return {
+            "image": example[img_col],
+            "text": str(example[txt_col]),
+        }
 
-    if img_col in cols and img_col != "image":
-        ds = ds.rename_column(img_col, "image")
-    if txt_col in cols and txt_col != "text":
-        ds = ds.rename_column(txt_col, "text")
-
+    # Transform keys dynamically per example
+    ds = ds.map(transform_fn)
     ds = ds.select_columns(["image", "text"])
 
     target_features = Features({"image": Image(), "text": Value("string")})

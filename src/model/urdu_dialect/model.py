@@ -158,7 +158,7 @@ class unification_urdu_lang_model:
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=4,
             num_train_epochs=1,
-            dataloader_num_workers=4,
+            dataloader_num_workers=1,
             learning_rate=2e-5,
             max_steps=2500,
             eval_strategy="steps",
