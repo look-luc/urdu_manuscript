@@ -7,6 +7,18 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
+def standardize_stream(ds: IterableDataset, img_col: str, txt_col: str) -> IterableDataset:
+    """Utility to rename columns and select only 'image' and 'text'."""
+    cols = ds.column_names or []
+
+    if img_col in cols and img_col != "image":
+        ds = ds.rename_column(img_col, "image")
+    if txt_col in cols and txt_col != "text":
+        ds = ds.rename_column(txt_col, "text")
+
+    return ds.select_columns(["image", "text"])
+
+
 def get_datasets(buffer_size: int = 100):
     """Loads dataset streams lazily with a configurable shuffle buffer size."""
     print(f"Loading datasets in streaming mode (buffer_size={buffer_size})...")
@@ -16,72 +28,71 @@ def get_datasets(buffer_size: int = 100):
         IterableDataset,
         load_dataset("riotu-lab/SARD", split="Traditional_Arabic", streaming=True),
     )
-    cols = sard_raw.column_names or []
-
-    if "text" not in cols:
-        if "label" in cols:
-            sard_raw = sard_raw.rename_column("label", "text")
-        elif "transcription" in cols:
-            sard_raw = sard_raw.rename_column("transcription", "text")
-
-    if "image" not in cols and "img" in cols:
-        sard_raw = sard_raw.rename_column("img", "image")
-
-    ds_arabic = sard_raw.select_columns(["image", "text"])
+    ds_arabic = standardize_stream(sard_raw, img_col="image", txt_col="label")
 
     # --- 2. Farsi / Persian ---
     parsynth_train_raw = cast(
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
-    ).rename_column("image_path", "image")
+    )
+    parsynth_train = standardize_stream(parsynth_train_raw, img_col="image_path", txt_col="text")
 
-    parsynth_test = cast(
+    parsynth_test_raw = cast(
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
     )
+    parsynth_test = standardize_stream(parsynth_test_raw, img_col="image_path", txt_col="text")
 
-    persian_train = cast(
+    persian_train_raw = cast(
         IterableDataset,
         load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
-    ).rename_column("fname", "text")
+    )
+    persian_train = standardize_stream(persian_train_raw, img_col="image", txt_col="fname")
 
-    persian_test = cast(
+    persian_test_raw = cast(
         IterableDataset,
         load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
-    ).rename_column("fname", "text")
+    )
+    persian_test = standardize_stream(persian_test_raw, img_col="image", txt_col="fname")
 
     persian_train_combined = interleave_datasets(
-        [parsynth_train_raw, persian_train],
+        [parsynth_train, persian_train],
         probabilities=[0.5, 0.5],
         seed=42,
     )
 
     # --- 3. Urdu ---
-    nastaliq = cast(
+    nastaliq_raw = cast(
         IterableDataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True),
     )
+    nastaliq = standardize_stream(nastaliq_raw, img_col="image", txt_col="text")
 
-    naskh = cast(
+    naskh_raw = cast(
         IterableDataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True),
     )
+    naskh = standardize_stream(naskh_raw, img_col="image", txt_col="text")
 
-    urdu_news = cast(
+    urdu_news_raw = cast(
         IterableDataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
     )
+    urdu_news = standardize_stream(urdu_news_raw, img_col="image", txt_col="text")
 
-    urdu_news_test = cast(
+    urdu_news_test_raw = cast(
         IterableDataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True),
     )
+    urdu_news_test = standardize_stream(urdu_news_test_raw, img_col="image", txt_col="text")
 
-    urdu_news_val = cast(
+    urdu_news_val_raw = cast(
         IterableDataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True),
     )
+    urdu_news_val = standardize_stream(urdu_news_val_raw, img_col="image", txt_col="text")
 
+    # --- Interleaving Standardized Streams ---
     test_sources = [
         ds_arabic.take(500),
         nastaliq.take(1000),
