@@ -1,3 +1,4 @@
+import numpy as np
 from qwen_vl_utils import process_vision_info
 
 
@@ -23,13 +24,16 @@ class QwenDataCollator:
             if raw_img is None:
                 continue
 
+            if hasattr(raw_img, "__array__") and not isinstance(raw_img, np.ndarray):
+                raw_img = np.asarray(raw_img)
+
             messages = [
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "image",
-                            "image": raw_img,
+                            "image": raw_img,  # Accepts np.ndarray directly
                             "min_pixels": self.min_pixels,
                             "max_pixels": self.max_pixels,
                         },

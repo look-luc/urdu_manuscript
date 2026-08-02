@@ -5,7 +5,6 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-from evaluate import load
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
@@ -26,7 +25,6 @@ from .data_collector import QwenDataCollator
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
-f1_metric = load("f1")
 
 
 class unification_urdu_lang_model:
@@ -34,7 +32,7 @@ class unification_urdu_lang_model:
         self,
         model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
         prompt: str = """
-            You are an expert multilingual OCR system specializing in high-accuracy transcription of Kannada, Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left (for Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian) and left to right (for Kanada), maintaining the original paragraph breaks and line structure.
+            You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
         """,
         batch_size: int = 64,
@@ -158,7 +156,7 @@ class unification_urdu_lang_model:
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=4,
             num_train_epochs=1,
-            dataloader_num_workers=1,
+            dataloader_num_workers=0,
             learning_rate=2e-5,
             max_steps=2500,
             eval_strategy="steps",
