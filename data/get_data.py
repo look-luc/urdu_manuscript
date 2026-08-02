@@ -25,9 +25,21 @@ def fix_persian_image_path(example):
 
 def get_datasets():
     # --- Arabic ---
-    ds_arabic = prepare_dataset(
-        cast(Dataset, load_dataset("mssqpi/Arabic-OCR-Dataset", split="train"))
+    sard_raw = cast(
+        Dataset, load_dataset("riotu-lab/SARD", split="train")["Traditional_Arabic"]
     )
+
+    # Normalize column names to match ["image", "text"] schema
+    if "text" not in sard_raw.column_names:
+        if "label" in sard_raw.column_names:
+            sard_raw = sard_raw.rename_column("label", "text")
+        elif "transcription" in sard_raw.column_names:
+            sard_raw = sard_raw.rename_column("transcription", "text")
+
+    if "image" not in sard_raw.column_names and "img" in sard_raw.column_names:
+        sard_raw = sard_raw.rename_column("img", "image")
+
+    ds_arabic = prepare_dataset(sard_raw)
     print("finished loading Arabic data")
 
     # --- Farsi ---
@@ -92,30 +104,35 @@ def get_datasets():
 
     test_dataset = interleave_datasets(
         [
-            ds_arabic.take(600),
-            nastaliq.take(600),
-            naskh.take(600),
+            ds_arabic,
+            nastaliq,
+            naskh,
             urdu_news_test,
             parsynth_test,
             persian_test,
             urdu_news_val,
-            kannada_df_test,
+            # kannada_df_test,
         ],
         seed=42,
     )
 
+    train_dataset = [
+        ds_arabic,
+        nastaliq,
+        naskh,
+        urdu_news,
+        parsynth_train,
+        persian_train,
+        # kannada_train,
+    ]
+
+    train_probabilities = [0.50, 0.20, 0.15, 0.10, 0.05]
+
     train_dataset = interleave_datasets(
-        [
-            ds_arabic.skip(600),
-            nastaliq.skip(600),
-            naskh.skip(600),
-            urdu_news,
-            parsynth_train,
-            persian_train,
-            kannada_train,
-        ],
-        seed=42,
-        stopping_strategy="all_exhausted",
-    )
+            datasets = train_dataset,
+            probabilities = train_probabilities,
+            stopping_strategy = "all_exhausted",
+            seed = 42
+        )
 
     return {"train": train_dataset, "test": test_dataset}
