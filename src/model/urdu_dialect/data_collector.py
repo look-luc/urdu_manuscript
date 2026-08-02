@@ -14,8 +14,12 @@ class QwenDataCollator:
         prompt_lens = []
 
         for feature in features:
+            if not feature or not isinstance(feature, dict):
+                continue
+
             raw_img = feature.get("image") if "image" in feature else feature.get("images")
             raw_txt = feature.get("text") if "text" in feature else ""
+
             if raw_img is None:
                 continue
 
@@ -60,6 +64,9 @@ class QwenDataCollator:
 
             text_str.append(formatted_text)
 
+        if not text_str or not imgs:
+            return {}
+
         batch = self.processor(
             text=text_str,
             images=imgs,
@@ -68,6 +75,9 @@ class QwenDataCollator:
             padding=True,
             return_tensors="pt",
         )
+
+        if batch is None:
+            return {}
 
         labels = batch["input_ids"].clone()
         pad_id = self.processor.tokenizer.pad_token_id

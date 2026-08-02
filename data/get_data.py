@@ -10,8 +10,8 @@ IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 def fix_persian_image_path(example):
     """Safely resolves relative Persian image paths and checks for existence on disk."""
-    if example is None:
-        return None
+    if not isinstance(example, dict):
+        return {"fname": None}
 
     fname = example.get("fname")
     if isinstance(fname, str):
@@ -25,7 +25,7 @@ def fix_persian_image_path(example):
 
 def is_valid_example(example):
     """Filters out corrupt, missing, or un-decoded image and text samples."""
-    if example is None:
+    if not isinstance(example, dict):
         return False
     if example.get("image") is None or example.get("text") is None:
         return False
@@ -94,7 +94,7 @@ def get_datasets():
             ),
         )
         .map(fix_persian_image_path)
-        .filter(lambda x: x is not None and x.get("fname") is not None)
+        .filter(lambda x: isinstance(x, dict) and x.get("fname") is not None)
         .rename_column("fname", "image")
         .select_columns(["image", "text"])
         .cast_column("image", HFImage(decode=True))
@@ -109,7 +109,7 @@ def get_datasets():
             ),
         )
         .map(fix_persian_image_path)
-        .filter(lambda x: x is not None and x.get("fname") is not None)
+        .filter(lambda x: isinstance(x, dict) and x.get("fname") is not None)
         .rename_column("fname", "image")
         .select_columns(["image", "text"])
         .cast_column("image", HFImage(decode=True))
@@ -201,9 +201,9 @@ def get_datasets():
     # --- 4. Test Dataset Assembly ---
     test_dataset = interleave_datasets(
         [
-            ds_arabic.take(600),
-            nastaliq.take(800),
-            naskh.take(800),
+            ds_arabic,
+            nastaliq,
+            naskh,
             urdu_news_test,
             parsynth_test,
             persian_test,
@@ -214,9 +214,9 @@ def get_datasets():
 
     # --- 5. Train Dataset Assembly ---
     train_sources = [
-        nastaliq.skip(800),
-        naskh.skip(800),
-        ds_arabic.skip(600),
+        nastaliq,
+        naskh,
+        ds_arabic,
         persian_train_combined,
         urdu_news,
     ]
