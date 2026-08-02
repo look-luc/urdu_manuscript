@@ -1,8 +1,8 @@
 import os
 from typing import cast
 
+from datasets import Dataset, interleave_datasets, load_dataset
 from datasets import Image as HFImage
-from datasets import IterableDataset, interleave_datasets, load_dataset
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
@@ -10,9 +10,6 @@ IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 def fix_persian_image_path(example):
     """Safely resolves relative Persian image paths and checks for existence on disk."""
-    if not isinstance(example, dict):
-        return {"fname": None}
-
     fname = example.get("fname")
     if isinstance(fname, str):
         full_path = os.path.join(IMAGE_BASE_DIR, fname)
@@ -24,23 +21,26 @@ def fix_persian_image_path(example):
 
 
 def is_valid_example(example):
-    """Filters out corrupt, missing, or un-decoded image and text samples."""
+    """Filters out corrupt, missing, or empty image and text samples."""
     if not isinstance(example, dict):
         return False
-    if example.get("image") is None or example.get("text") is None:
+
+    img = example.get("image")
+    txt = example.get("text")
+
+    if img is None or txt is None:
         return False
+    if isinstance(txt, str) and not txt.strip():
+        return False
+
     return True
 
 
 def get_datasets():
-    # --- 1. Arabic (Streamed) ---
-    sard_raw = cast(
-        IterableDataset,
-        load_dataset("riotu-lab/SARD", streaming=True)[
-            "Traditional_Arabic"
-        ],
-    )
+    print("Loading datasets in non-streaming mode (downloading/caching locally)...")
 
+    # --- 1. Arabic ---
+    sard_raw = cast(Dataset, load_dataset("riotu-lab/SARD", split="Traditional_Arabic"))
     cols = sard_raw.column_names or []
 
     if "text" not in cols:
@@ -54,66 +54,43 @@ def get_datasets():
 
     ds_arabic = (
         sard_raw.select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
-    print("finished loading Arabic streaming stream")
+    print("Finished loading Arabic dataset.")
 
-    # --- 2. Farsi / Persian (Streamed & Filtered) ---
+    # --- 2. Farsi / Persian ---
     parsynth_train = (
-        cast(
-            IterableDataset,
-            load_dataset(
-                "hezarai/parsynth-ocr-200k", split="train", streaming=True
-            ),
-        )
+        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="train"))
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     parsynth_test = (
-        cast(
-            IterableDataset,
-            load_dataset(
-                "hezarai/parsynth-ocr-200k", split="test", streaming=True
-            ),
-        )
+        cast(Dataset, load_dataset("hezarai/parsynth-ocr-200k", split="test"))
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     persian_train = (
-        cast(
-            IterableDataset,
-            load_dataset(
-                "ordaktaktak/Persian-OCR-230k", split="train", streaming=True
-            ),
-        )
-        .map(fix_persian_image_path)
-        .filter(lambda x: isinstance(x, dict) and x.get("fname") is not None)
+        cast(Dataset, load_dataset("ordaktaktak/Persian-OCR-230k", split="train"))
+        .map(fix_persian_image_path, num_proc=4)
+        .filter(lambda x: x.get("fname") is not None, num_proc=4)
         .rename_column("fname", "image")
+        .cast_column("image", HFImage())
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     persian_test = (
-        cast(
-            IterableDataset,
-            load_dataset(
-                "ordaktaktak/Persian-OCR-230k", split="test", streaming=True
-            ),
-        )
-        .map(fix_persian_image_path)
-        .filter(lambda x: isinstance(x, dict) and x.get("fname") is not None)
+        cast(Dataset, load_dataset("ordaktaktak/Persian-OCR-230k", split="test"))
+        .map(fix_persian_image_path, num_proc=4)
+        .filter(lambda x: x.get("fname") is not None, num_proc=4)
         .rename_column("fname", "image")
+        .cast_column("image", HFImage())
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     persian_train_combined = interleave_datasets(
@@ -121,102 +98,83 @@ def get_datasets():
         probabilities=[0.5, 0.5],
         seed=42,
     )
-    print("finished loading Farsi/Persian streaming stream")
+    print("Finished loading Farsi/Persian datasets.")
 
-    # --- 3. Urdu (Streamed & Filtered) ---
+    # --- 3. Urdu ---
     nastaliq = (
         cast(
-            IterableDataset,
+            Dataset,
             load_dataset(
-                "PuristanLabs1/urdu-ocr-1M",
-                "nastaliq",
-                split="train",
-                streaming=True,
+                "PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train"
             ),
         )
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     naskh = (
         cast(
-            IterableDataset,
+            Dataset,
             load_dataset(
-                "PuristanLabs1/urdu-ocr-1M",
-                "naskh",
-                split="train",
-                streaming=True,
+                "PuristanLabs1/urdu-ocr-1M", "naskh", split="train"
             ),
         )
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     urdu_news = (
         cast(
-            IterableDataset,
+            Dataset,
             load_dataset(
-                "oddadmix/qari-0.2.2-news-dataset-large",
-                split="train",
-                streaming=True,
+                "oddadmix/qari-0.2.2-news-dataset-large", split="train"
             ),
         )
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     urdu_news_test = (
         cast(
-            IterableDataset,
+            Dataset,
             load_dataset(
-                "oddadmix/qari-0.2.2-news-dataset-large",
-                split="test",
-                streaming=True,
+                "oddadmix/qari-0.2.2-news-dataset-large", split="test"
             ),
         )
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
 
     urdu_news_val = (
         cast(
-            IterableDataset,
+            Dataset,
             load_dataset(
-                "oddadmix/qari-0.2.2-news-dataset-large",
-                split="validation",
-                streaming=True,
+                "oddadmix/qari-0.2.2-news-dataset-large", split="validation"
             ),
         )
         .select_columns(["image", "text"])
-        .cast_column("image", HFImage(decode=True))
-        .filter(is_valid_example)
+        .filter(is_valid_example, num_proc=4)
     )
-
-    print("finished loading Urdu streaming stream")
+    print("Finished loading Urdu datasets.")
 
     # --- 4. Test Dataset Assembly ---
-    test_dataset = interleave_datasets(
-        [
-            ds_arabic,
-            nastaliq,
-            naskh,
-            urdu_news_test,
-            parsynth_test,
-            persian_test,
-            urdu_news_val,
-        ],
-        seed=42,
-    )
+    test_sources = [
+        ds_arabic.select(range(min(600, len(ds_arabic)))),
+        nastaliq.select(range(min(800, len(nastaliq)))),
+        naskh.select(range(min(800, len(naskh)))),
+        urdu_news_test,
+        parsynth_test,
+        persian_test,
+        urdu_news_val,
+    ]
+
+    test_dataset = interleave_datasets(test_sources, seed=42)
 
     # --- 5. Train Dataset Assembly ---
     train_sources = [
-        nastaliq,
-        naskh,
-        ds_arabic,
+        nastaliq.select(range(min(800, len(nastaliq)), len(nastaliq))),
+        naskh.select(range(min(800, len(naskh)), len(naskh))),
+        ds_arabic.select(range(min(600, len(ds_arabic)), len(ds_arabic))),
         persian_train_combined,
         urdu_news,
     ]
@@ -228,6 +186,6 @@ def get_datasets():
         probabilities=train_probabilities,
         stopping_strategy="all_exhausted",
         seed=42,
-    ).shuffle(buffer_size=10000, seed=42)
+    ).shuffle(seed=42)
 
     return {"train": train_dataset, "test": test_dataset}
