@@ -1,12 +1,18 @@
 from typing import cast
 
-from datasets import IterableDataset, interleave_datasets, load_dataset
+from datasets import (
+    Features,
+    Image,
+    IterableDataset,
+    Value,
+    interleave_datasets,
+    load_dataset,
+)
 
 
 def standardize_stream(
     ds: IterableDataset, img_col: str = "image", txt_col: str = "text"
 ) -> IterableDataset:
-    """Safely renames columns and filters the stream down to ['image', 'text']."""
     cols = list(ds.features.keys()) if ds.features is not None else (ds.column_names or [])
 
     if img_col in cols and img_col != "image":
@@ -14,7 +20,10 @@ def standardize_stream(
     if txt_col in cols and txt_col != "text":
         ds = ds.rename_column(txt_col, "text")
 
-    return ds.select_columns(["image", "text"])
+    ds = ds.select_columns(["image", "text"])
+
+    target_features = Features({"image": Image(), "text": Value("string")})
+    return ds.cast(target_features)
 
 
 def get_datasets(buffer_size: int = 100):
@@ -27,7 +36,6 @@ def get_datasets(buffer_size: int = 100):
     )
     ds_arabic = standardize_stream(sard_raw, img_col="image", txt_col="label")
 
-    # Use take/skip instead of train_test_split
     ds_arabic_test = ds_arabic.take(1000)
     ds_arabic_train = ds_arabic.skip(1000)
 
@@ -44,14 +52,11 @@ def get_datasets(buffer_size: int = 100):
     )
     parsynth_test = standardize_stream(parsynth_test_raw, img_col="image_path", txt_col="text")
 
-    persian_pixel = cast(IterableDataset, load_dataset(
-        "Omarrran/Persian_Pixel",
-        name="full",
-        split="train",
-        streaming=True,
-    ))
-
-    persian_pixel = standardize_stream(persian_pixel, img_col="image", txt_col="text")
+    persian_pixel_raw = cast(
+        IterableDataset,
+        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", streaming=True),
+    )
+    persian_pixel = standardize_stream(persian_pixel_raw, img_col="image", txt_col="text")
 
     # --- 3. Urdu Datasets ---
     nastaliq_raw = cast(
@@ -78,7 +83,7 @@ def get_datasets(buffer_size: int = 100):
     )
     urdu_news_test = standardize_stream(urdu_news_test_raw, img_col="image", txt_col="text")
 
-    # Interleave Urdu training streams (replaces concatenate_datasets)
+    # Interleave Urdu training streams
     urdu_ds_train = interleave_datasets(
         [nastaliq.skip(1000), naskh.skip(1000), urdu_news_train],
         seed=42,
