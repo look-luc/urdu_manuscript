@@ -1,15 +1,13 @@
-import os
 from typing import cast
 
 from datasets import IterableDataset, interleave_datasets, load_dataset
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
-
-def standardize_stream(ds: IterableDataset, img_col: str, txt_col: str) -> IterableDataset:
-    """Utility to rename columns and select only 'image' and 'text'."""
-    cols = ds.column_names or []
+def standardize_stream(
+    ds: IterableDataset, img_col: str = "image", txt_col: str = "text"
+) -> IterableDataset:
+    """Safely renames columns and filters the stream down to ['image', 'text']."""
+    cols = list(ds.features.keys()) if ds.features is not None else (ds.column_names or [])
 
     if img_col in cols and img_col != "image":
         ds = ds.rename_column(img_col, "image")
@@ -20,7 +18,6 @@ def standardize_stream(ds: IterableDataset, img_col: str, txt_col: str) -> Itera
 
 
 def get_datasets(buffer_size: int = 100):
-    """Loads dataset streams lazily with a configurable shuffle buffer size."""
     print(f"Loading datasets in streaming mode (buffer_size={buffer_size})...")
 
     # --- 1. Arabic ---
@@ -29,6 +26,10 @@ def get_datasets(buffer_size: int = 100):
         load_dataset("riotu-lab/SARD", split="Traditional_Arabic", streaming=True),
     )
     ds_arabic = standardize_stream(sard_raw, img_col="image", txt_col="label")
+
+    # Use take/skip instead of train_test_split
+    ds_arabic_test = ds_arabic.take(1000)
+    ds_arabic_train = ds_arabic.skip(1000)
 
     # --- 2. Farsi / Persian ---
     parsynth_train_raw = cast(
@@ -43,25 +44,16 @@ def get_datasets(buffer_size: int = 100):
     )
     parsynth_test = standardize_stream(parsynth_test_raw, img_col="image_path", txt_col="text")
 
-    persian_train_raw = cast(
-        IterableDataset,
-        load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
-    )
-    persian_train = standardize_stream(persian_train_raw, img_col="image", txt_col="fname")
+    persian_pixel = cast(IterableDataset, load_dataset(
+        "Omarrran/Persian_Pixel",
+        name="full",
+        split="train",
+        streaming=True,
+    ))
 
-    persian_test_raw = cast(
-        IterableDataset,
-        load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
-    )
-    persian_test = standardize_stream(persian_test_raw, img_col="image", txt_col="fname")
+    persian_pixel = standardize_stream(persian_pixel, img_col="image", txt_col="text")
 
-    persian_train_combined = interleave_datasets(
-        [parsynth_train, persian_train],
-        probabilities=[0.5, 0.5],
-        seed=42,
-    )
-
-    # --- 3. Urdu ---
+    # --- 3. Urdu Datasets ---
     nastaliq_raw = cast(
         IterableDataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True),
@@ -74,11 +66,11 @@ def get_datasets(buffer_size: int = 100):
     )
     naskh = standardize_stream(naskh_raw, img_col="image", txt_col="text")
 
-    urdu_news_raw = cast(
+    urdu_news_train_raw = cast(
         IterableDataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
     )
-    urdu_news = standardize_stream(urdu_news_raw, img_col="image", txt_col="text")
+    urdu_news_train = standardize_stream(urdu_news_train_raw, img_col="image", txt_col="text")
 
     urdu_news_test_raw = cast(
         IterableDataset,
@@ -86,34 +78,34 @@ def get_datasets(buffer_size: int = 100):
     )
     urdu_news_test = standardize_stream(urdu_news_test_raw, img_col="image", txt_col="text")
 
-    urdu_news_val_raw = cast(
-        IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True),
+    # Interleave Urdu training streams (replaces concatenate_datasets)
+    urdu_ds_train = interleave_datasets(
+        [nastaliq.skip(1000), naskh.skip(1000), urdu_news_train],
+        seed=42,
     )
-    urdu_news_val = standardize_stream(urdu_news_val_raw, img_col="image", txt_col="text")
 
-    # --- Interleaving Standardized Streams ---
+    # Interleave Urdu test streams
+    urdu_ds_test = interleave_datasets(
+        [nastaliq.take(1000), naskh.take(1000), urdu_news_test],
+        seed=42,
+    )
+
+    # --- Combine All Sources ---
     test_sources = [
-        ds_arabic.take(500),
-        nastaliq.take(1000),
-        naskh.take(400),
-        urdu_news_test.take(300),
-        parsynth_test.take(400),
-        persian_test.take(400),
-        urdu_news_val.take(300),
+        ds_arabic_test,
+        parsynth_test,
+        persian_pixel.take(100000),
+        urdu_ds_test,
     ]
-
     test_dataset = interleave_datasets(test_sources, seed=42)
 
     train_sources = [
-        nastaliq.skip(1000),
-        ds_arabic.skip(500),
-        naskh.skip(400),
-        persian_train_combined,
-        urdu_news,
+        ds_arabic_train,
+        parsynth_train,
+        persian_pixel.skip(100000),
+        urdu_ds_train,
     ]
-
-    train_probabilities = [0.55, 0.20, 0.12, 0.08, 0.05]
+    train_probabilities = [0.15, 0.175, 0.175, 0.50]
 
     train_dataset = interleave_datasets(
         datasets=train_sources,
