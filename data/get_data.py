@@ -20,7 +20,7 @@ IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 def fix_persian_image_path(example):
     if not isinstance(example, dict):
-        return None
+        return {"fname": None, "text": None}
 
     fname = example.get("fname")
     if isinstance(fname, str):
@@ -32,14 +32,15 @@ def fix_persian_image_path(example):
                 )
                 return example
             except Exception:
-                return None
+                pass
 
-    return None
+    example["fname"] = None
+    return example
 
 
 def fix_parsynth_image_path(example):
     if not isinstance(example, dict):
-        return None
+        return {"image_path": None, "text": None}
 
     img_path = example.get("image_path")
     if isinstance(img_path, str):
@@ -51,9 +52,10 @@ def fix_parsynth_image_path(example):
                 )
                 return example
             except Exception:
-                return None
+                pass
 
-    return None
+    example["image_path"] = None
+    return example
 
 
 def is_valid_example(example):
@@ -109,7 +111,6 @@ def get_datasets(buffer_size: int = 10000):
     parsynth_train = (
         parsynth_train_raw
         .map(fix_parsynth_image_path)
-        .filter(lambda x: x is not None)
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
@@ -124,7 +125,6 @@ def get_datasets(buffer_size: int = 10000):
     parsynth_test = (
         parsynth_test_raw
         .map(fix_parsynth_image_path)
-        .filter(lambda x: x is not None)
         .rename_column("image_path", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
@@ -144,7 +144,6 @@ def get_datasets(buffer_size: int = 10000):
     persian_train = (
         persian_train_raw
         .map(fix_persian_image_path)
-        .filter(lambda x: x is not None)
         .rename_column("fname", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
@@ -159,7 +158,6 @@ def get_datasets(buffer_size: int = 10000):
     persian_test = (
         persian_test_raw
         .map(fix_persian_image_path)
-        .filter(lambda x: x is not None)
         .rename_column("fname", "image")
         .select_columns(["image", "text"])
         .filter(is_valid_example)
