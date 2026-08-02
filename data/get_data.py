@@ -1,15 +1,19 @@
 import os
 from typing import cast
 
-from datasets import Image as HFImage
+import torchvision.transforms.functional as F
 from datasets import IterableDataset, interleave_datasets, load_dataset
+from torchvision.io import ImageReadMode, read_image
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
 def fix_persian_image_path(example):
-    """Safely resolves relative Persian image paths. Returns None if invalid or missing."""
+    """Safely resolves relative Persian image paths and loads them as PIL Images.
+
+    This ensures feature schema alignment with remote Hugging Face datasets.
+    """
     if not isinstance(example, dict):
         return None
 
@@ -17,8 +21,11 @@ def fix_persian_image_path(example):
     if isinstance(fname, str):
         full_path = os.path.join(IMAGE_BASE_DIR, fname)
         if os.path.exists(full_path):
-            example["fname"] = full_path
-            return example
+            try:
+                example["fname"] = F.to_pil_image(read_image(full_path, mode=ImageReadMode.RGB))
+                return example
+            except Exception:
+                return None
 
     return None
 
@@ -90,7 +97,6 @@ def get_datasets(buffer_size: int = 10000):
         .map(fix_persian_image_path)
         .filter(lambda x: x is not None)
         .rename_column("fname", "image")
-        .cast_column("image", HFImage())
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
@@ -103,7 +109,6 @@ def get_datasets(buffer_size: int = 10000):
         .map(fix_persian_image_path)
         .filter(lambda x: x is not None)
         .rename_column("fname", "image")
-        .cast_column("image", HFImage())
         .select_columns(["image", "text"])
         .filter(is_valid_example)
     )
