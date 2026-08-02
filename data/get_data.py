@@ -1,13 +1,15 @@
 import os
 from typing import Tuple, Union
 
+import numpy as np
+import torch
+import torchvision.io as tv_io
 from datasets import (
     IterableDataset,
     IterableDatasetDict,
     interleave_datasets,
     load_dataset,
 )
-from PIL import Image
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -16,30 +18,54 @@ if not os.path.exists(IMAGE_BASE_DIR):
     IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
-def transform_example(example: dict, default_img_dir: str = None) -> dict:
-    """Dynamically converts image paths/objects to PIL Images and standardizes text fields."""
-    image = None
+def load_as_tensor(
+    raw_img: Union[str, torch.Tensor, dict, None], default_dir: str = ""
+) -> Union[torch.Tensor, None]:
+    """Safely converts any image representation into a 3-channel RGB PyTorch Tensor [3, H, W]."""
+    if raw_img is None:
+        return None
 
-    # 1. Resolve Image
-    if "image" in example and example["image"] is not None:
-        image = example["image"]
-    elif "image_path" in example and example["image_path"] is not None:
-        image = Image.open(example["image_path"]).convert("RGB")
-    elif "img" in example and example["img"] is not None:
-        image = example["img"]
-    elif "fname" in example and example["fname"] is not None:
-        img_path = (
-            os.path.join(default_img_dir, example["fname"])
-            if default_img_dir
-            else example["fname"]
+    if isinstance(raw_img, torch.Tensor):
+        if raw_img.ndim == 3 and raw_img.shape[0] != 3 and raw_img.shape[2] == 3:
+            return raw_img.permute(2, 0, 1).contiguous()
+        return raw_img
+
+    if isinstance(raw_img, str):
+        path = (
+            os.path.join(default_dir, raw_img)
+            if default_dir and not os.path.isabs(raw_img)
+            else raw_img
         )
-        image = Image.open(img_path).convert("RGB")
+        if os.path.exists(path):
+            file_bytes = tv_io.read_file(path)
+            return tv_io.decode_image(file_bytes, mode=tv_io.ImageReadMode.RGB)
+        return None
 
-    # If image is a string path that wasn't decoded yet
-    if isinstance(image, str):
-        image = Image.open(image).convert("RGB")
+    if isinstance(raw_img, dict) and raw_img.get("bytes") is not None:
+        byte_tensor = torch.frombuffer(raw_img["bytes"], dtype=torch.uint8)
+        return tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
 
-    # 2. Resolve Text Column
+    if hasattr(raw_img, "convert"):
+        np_arr = np.array(raw_img.convert("RGB"))
+        return torch.from_numpy(np_arr).permute(2, 0, 1).contiguous()
+
+    return None
+
+
+def transform_example(example: dict, default_img_dir: str = "") -> dict:
+    """Dynamically converts image paths/objects to PyTorch Tensors and standardizes text fields."""
+    raw_img = (
+        example.get("image")
+        if example.get("image") is not None
+        else example.get("image_path")
+        if example.get("image_path") is not None
+        else example.get("img")
+        if example.get("img") is not None
+        else example.get("fname")
+    )
+
+    image_tensor = load_as_tensor(raw_img, default_dir=default_img_dir)
+
     text = (
         example.get("text")
         or example.get("transcription")
@@ -47,7 +73,7 @@ def transform_example(example: dict, default_img_dir: str = None) -> dict:
         or ""
     )
 
-    return {"image": image, "text": text}
+    return {"image": image_tensor, "text": text}
 
 
 def get_streaming_split_pair(
@@ -98,7 +124,6 @@ def get_datasets():
         lambda x: transform_example(x, default_img_dir=IMAGE_BASE_DIR)
     )
 
-    # Combine Farsi sub-streams lazily
     farsi_train = interleave_datasets([parsynth_train, persian_train])
     farsi_test = interleave_datasets([parsynth_test, persian_test])
 
