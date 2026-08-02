@@ -1,16 +1,45 @@
 import os
 from typing import cast
 
-import torchvision.transforms.functional as F
 from datasets import (
     IterableDataset,
     interleave_datasets,
     load_dataset,
 )
-from torchvision.io import ImageReadMode, read_image
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
+
+
+def format_dataset_stream(
+    ds: IterableDataset, default_img_dir: str = None
+) -> IterableDataset:
+    """Standardizes any streaming dataset to strictly yield keys: ['image', 'text']."""
+    cols = ds.column_names or []
+
+    if "text" not in cols:
+        if "transcription" in cols:
+            ds = ds.rename_column("transcription", "text")
+        elif "label" in cols:
+            ds = ds.rename_column("label", "text")
+
+    cols = ds.column_names or []
+    if "image" not in cols:
+        if "image_path" in cols:
+            ds = ds.rename_column("image_path", "image")
+        elif "img" in cols:
+            ds = ds.rename_column("img", "image")
+        elif "fname" in cols and default_img_dir:
+            ds = ds.map(
+                lambda x: {
+                    "image": os.path.join(default_img_dir, x["fname"]),
+                    "text": x.get("text", ""),
+                }
+            )
+        elif "fname" in cols:
+            ds = ds.rename_column("fname", "image")
+
+    return ds.select_columns(["image", "text"])
 
 
 def get_datasets(buffer_size: int = 10000):
@@ -19,93 +48,107 @@ def get_datasets(buffer_size: int = 10000):
     # --- 1. Arabic ---
     sard_raw = cast(
         IterableDataset,
-        load_dataset("riotu-lab/SARD", split="Traditional_Arabic", streaming=True),
+        load_dataset(
+            "riotu-lab/SARD", split="Traditional_Arabic", streaming=True
+        ),
     )
-    cols = sard_raw.column_names or []
-
-    if "text" not in cols:
-        if "label" in cols:
-            sard_raw = sard_raw.rename_column("label", "text")
-        elif "transcription" in cols:
-            sard_raw = sard_raw.rename_column("transcription", "text")
-
-    if "image" not in cols and "img" in cols:
-        sard_raw = sard_raw.rename_column("img", "image")
-
-    ds_arabic = sard_raw.select_columns(["image", "text"])
+    ds_arabic = format_dataset_stream(sard_raw)
     print("Finished loading Arabic dataset.")
 
     # --- 2. Farsi / Persian ---
     parsynth_train_raw = cast(
         IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
+        load_dataset(
+            "hezarai/parsynth-ocr-200k", split="train", streaming=True
+        ),
     )
-    p_train_cols = parsynth_train_raw.column_names or []
-    if "image" not in p_train_cols:
-        if "image_path" in p_train_cols:
-            parsynth_train_raw = parsynth_train_raw.rename_column("image_path", "image")
-        elif "img" in p_train_cols:
-            parsynth_train_raw = parsynth_train_raw.rename_column("img", "image")
+    parsynth_train = format_dataset_stream(parsynth_train_raw)
 
     parsynth_test_raw = cast(
         IterableDataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
     )
-    p_test_cols = parsynth_test_raw.column_names or []
-    if "image" not in p_test_cols:
-        if "image_path" in p_test_cols:
-            parsynth_test_raw = parsynth_test_raw.rename_column("image_path", "image")
-        elif "img" in p_test_cols:
-            parsynth_test_raw = parsynth_test_raw.rename_column("img", "image")
-
-    parsynth_test = parsynth_test_raw
+    parsynth_test = format_dataset_stream(parsynth_test_raw)
 
     persian_train_raw = cast(
         IterableDataset,
-        load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
-    ).rename_column("fname", "text")
-
-    persian_train = persian_train_raw
+        load_dataset(
+            "ordaktaktak/Persian-OCR-230k", split="train", streaming=True
+        ),
+    )
+    persian_train = format_dataset_stream(
+        persian_train_raw, default_img_dir=IMAGE_BASE_DIR
+    )
 
     persian_test_raw = cast(
         IterableDataset,
-        load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
-    ).rename_column("fname", "text")
-
-    persian_test = persian_test_raw
+        load_dataset(
+            "ordaktaktak/Persian-OCR-230k", split="test", streaming=True
+        ),
+    )
+    persian_test = format_dataset_stream(
+        persian_test_raw, default_img_dir=IMAGE_BASE_DIR
+    )
 
     persian_train_combined = interleave_datasets(
-        [parsynth_train_raw, persian_train],
+        [parsynth_train, persian_train],
         probabilities=[0.5, 0.5],
         seed=42,
     )
     print("Finished loading Farsi/Persian datasets.")
 
     # --- 3. Urdu ---
-    nastaliq = cast(
-            IterableDataset,
-            load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True),
-        )
-
-    naskh = cast(
+    nastaliq_raw = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True),
+        load_dataset(
+            "PuristanLabs1/urdu-ocr-1M",
+            "nastaliq",
+            split="train",
+            streaming=True,
+        ),
     )
+    nastaliq = format_dataset_stream(nastaliq_raw)
 
-    urdu_news = cast(
+    naskh_raw = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
+        load_dataset(
+            "PuristanLabs1/urdu-ocr-1M",
+            "naskh",
+            split="train",
+            streaming=True,
+        ),
     )
+    naskh = format_dataset_stream(naskh_raw)
 
-    urdu_news_test = cast(
+    urdu_news_raw = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True),
+        load_dataset(
+            "oddadmix/qari-0.2.2-news-dataset-large",
+            split="train",
+            streaming=True,
+        ),
     )
+    urdu_news = format_dataset_stream(urdu_news_raw)
 
-    urdu_news_val = cast(
+    urdu_news_test_raw = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True),
+        load_dataset(
+            "oddadmix/qari-0.2.2-news-dataset-large",
+            split="test",
+            streaming=True,
+        ),
     )
+    urdu_news_test = format_dataset_stream(urdu_news_test_raw)
+
+    urdu_news_val_raw = cast(
+        IterableDataset,
+        load_dataset(
+            "oddadmix/qari-0.2.2-news-dataset-large",
+            split="validation",
+            streaming=True,
+        ),
+    )
+    urdu_news_val = format_dataset_stream(urdu_news_val_raw)
     print("Finished loading Urdu datasets.")
 
     test_sources = [
