@@ -9,17 +9,18 @@ IMAGE_BASE_DIR = os.path.join(SCRIPT_DIR, "Persian-OCR-230k")
 
 
 def fix_persian_image_path(example):
-    """Safely resolves relative Persian image paths and checks for existence on disk."""
+    """Safely resolves relative Persian image paths. Returns None if invalid or missing."""
+    if not isinstance(example, dict):
+        return None
+
     fname = example.get("fname")
     if isinstance(fname, str):
         full_path = os.path.join(IMAGE_BASE_DIR, fname)
         if os.path.exists(full_path):
             example["fname"] = full_path
-        else:
-            example["fname"] = None
-    else:
-        example["fname"] = None
-    return example
+            return example
+
+    return None
 
 
 def is_valid_example(example):
@@ -57,10 +58,7 @@ def get_datasets(buffer_size: int = 10000):
     if "image" not in cols and "img" in cols:
         sard_raw = sard_raw.rename_column("img", "image")
 
-    ds_arabic = (
-        sard_raw.select_columns(["image", "text"])
-        .filter(is_valid_example)
-    )
+    ds_arabic = sard_raw.select_columns(["image", "text"]).filter(is_valid_example)
     print("Finished loading Arabic dataset.")
 
     # --- 2. Farsi / Persian ---
@@ -90,7 +88,7 @@ def get_datasets(buffer_size: int = 10000):
             load_dataset("ordaktaktak/Persian-OCR-230k", split="train", streaming=True),
         )
         .map(fix_persian_image_path)
-        .filter(lambda x: x.get("fname") is not None)
+        .filter(lambda x: x is not None)
         .rename_column("fname", "image")
         .cast_column("image", HFImage())
         .select_columns(["image", "text"])
@@ -103,7 +101,7 @@ def get_datasets(buffer_size: int = 10000):
             load_dataset("ordaktaktak/Persian-OCR-230k", split="test", streaming=True),
         )
         .map(fix_persian_image_path)
-        .filter(lambda x: x.get("fname") is not None)
+        .filter(lambda x: x is not None)
         .rename_column("fname", "image")
         .cast_column("image", HFImage())
         .select_columns(["image", "text"])
@@ -164,7 +162,6 @@ def get_datasets(buffer_size: int = 10000):
     )
     print("Finished loading Urdu datasets.")
 
-    # --- 4. Test Dataset Assembly ---
     test_sources = [
         ds_arabic.take(500),
         nastaliq.take(1000),
@@ -177,7 +174,6 @@ def get_datasets(buffer_size: int = 10000):
 
     test_dataset = interleave_datasets(test_sources, seed=42)
 
-    # --- 5. Train Dataset Assembly ---
     train_sources = [
         nastaliq.skip(1000),
         ds_arabic.skip(500),
