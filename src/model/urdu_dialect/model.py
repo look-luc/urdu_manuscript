@@ -175,6 +175,7 @@ class unification_urdu_lang_model:
             eval_dataset=test_dataset,
             data_collator=Data_Collector(
                 self.processor,
+                prompt=self.prompt,
             ),
             compute_metrics=self._compute_metrics,
         )

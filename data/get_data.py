@@ -8,66 +8,64 @@ import torchvision.io as tv_io
 from datasets import IterableDataset, interleave_datasets, load_dataset
 
 
-def to_torchvision_rgb(example):
+def to_raw_bytes(example):
+    """Normalizes any image source to raw 1D binary bytes for PyArrow streaming compatibility without PIL."""
     img_data = example.get("image") or example.get("image_path") or example.get("image_base64")
     txt_data = example.get("text") or example.get("markdown") or example.get("chunk")
+
+    raw_bytes = None
 
     if isinstance(img_data, str) and (img_data.startswith("data:image") or "image_base64" in example):
         if "," in img_data:
             img_data = img_data.split(",", 1)[1]
         raw_bytes = base64.b64decode(img_data)
-        byte_tensor = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
-        img_tensor = tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
 
     elif isinstance(img_data, dict) and "bytes" in img_data and img_data["bytes"]:
-        byte_tensor = torch.frombuffer(bytearray(img_data["bytes"]), dtype=torch.uint8)
-        img_tensor = tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
+        raw_bytes = img_data["bytes"]
 
     elif isinstance(img_data, str):
-        img_tensor = tv_io.read_image(img_data, mode=tv_io.ImageReadMode.RGB)
+        with open(img_data, "rb") as f:
+            raw_bytes = f.read()
 
-    elif isinstance(img_data, torch.Tensor):
-        img_tensor = img_data
+    elif isinstance(img_data, (torch.Tensor, np.ndarray)):
+        img_tensor = torch.from_numpy(img_data) if isinstance(img_data, np.ndarray) else img_data
+        if img_tensor.ndim == 3 and img_tensor.shape[-1] in (3, 4):
+            if img_tensor.shape[-1] == 4:  # Strip alpha channel if RGBA
+                img_tensor = img_tensor[:, :, :3]
+            img_tensor = img_tensor.permute(2, 0, 1)
 
-    else:
-        try:
-            arr = np.asarray(img_data)
-            img_tensor = torch.from_numpy(arr)
-            if img_tensor.ndim == 3 and img_tensor.shape[-1] in (3, 4):
-                if img_tensor.shape[-1] == 4:  # Strip alpha channel if RGBA
-                    img_tensor = img_tensor[:, :, :3]
-                img_tensor = img_tensor.permute(2, 0, 1)
-        except Exception:
-            raise ValueError(f"Unsupported image payload type: {type(img_data)}")
+        if img_tensor.dtype != torch.uint8:
+            img_tensor = img_tensor.to(torch.uint8)
 
-    if img_tensor.ndim == 3 and img_tensor.shape[0] in (1, 3):
-        img_tensor = img_tensor.permute(1, 2, 0)
+        # Encode tensor directly to PNG binary bytes using torchvision
+        raw_bytes = bytes(tv_io.encode_png(img_tensor.cpu()).numpy())
 
-    img_numpy = img_tensor.cpu().numpy() if isinstance(img_tensor, torch.Tensor) else np.asarray(img_tensor)
+    if raw_bytes is None:
+        raise ValueError(f"Unable to extract raw image bytes from payload type: {type(img_data)}")
 
-    return {"image": img_numpy, "text": str(txt_data)}
+    return {"image_bytes": raw_bytes, "text": str(txt_data)}
 
 
 def _prepare_stream(dataset_name: str, split: str, name: str = "") -> IterableDataset:
-    """Loads a dataset stream and disables automatic PIL image decoding."""
+    """Loads a dataset stream and casts image features to raw byte vectors."""
     kwargs = {"split": split, "streaming": True}
     if name:
         kwargs["name"] = name
 
     ds = load_dataset(dataset_name, **kwargs)
 
-    # Disables automatic PIL object generation upstream
+    # Disable automatic PIL object generation upstream
     if "image" in ds.features:
         ds = ds.cast_column("image", datasets.Image(decode=False))
 
     return cast(
         IterableDataset,
-        ds.map(to_torchvision_rgb).select_columns(["image", "text"])
+        ds.map(to_raw_bytes).select_columns(["image_bytes", "text"])
     )
 
 
 def get_datasets(buffer_size: int = 100):
-    print(f"Loading datasets with torchvision.io pipeline (buffer_size={buffer_size})...")
+    print(f"Loading datasets with pure torchvision byte pipeline (buffer_size={buffer_size})...")
 
     arabic_train = _prepare_stream("MohamedRashad/arabic-img2md", split="train")
     arabic_test = _prepare_stream("MohamedRashad/arabic-img2md", split="test")
