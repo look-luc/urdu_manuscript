@@ -77,7 +77,7 @@ def get_datasets(buffer_size:int=1000):
     ).select_columns(["image", "text"]).map(_all_same_type)
     naskh_raw_test = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="test", streaming=True)
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", streaming=True)
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     urdu_news_train = cast(
@@ -90,7 +90,7 @@ def get_datasets(buffer_size:int=1000):
     ).select_columns(["image", "text"]).map(_all_same_type)
     urdu_news_val = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="val", streaming=True)
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True)
     ).select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading urdu")
 
