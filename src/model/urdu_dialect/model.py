@@ -111,13 +111,13 @@ class unification_urdu_lang_model:
 
         model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             self.model_id,
-            device_map="auto",
+            device_map={"": self.device},
             attn_implementation="sdpa",
             torch_dtype=torch.bfloat16,
         )
 
         self.min_pixels = 56 * 56
-        self.max_pixels = 1280 * 28 * 28
+        self.max_pixels = 768 * 28 * 28
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
@@ -153,14 +153,12 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        # self.model.enable_input_require_grads()
-        # self.model.gradient_checkpointing_enable()
-
         training_args = TrainingArguments(
             output_dir="./results",
             per_device_train_batch_size=2,
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=4,
+            gradient_checkpointing=True,
             num_train_epochs=1,
             dataloader_num_workers=0,
             learning_rate=2e-5,
