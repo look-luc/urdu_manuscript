@@ -13,21 +13,23 @@
 
 export HF_TOKEN="${HF_TOKEN}"
 
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export TOKENIZERS_PARALLELISM=false
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+export NUMEXPR_NUM_THREADS=1
+
 export SCRATCH_DIR="/scratch/alpine/$USER"
 export HF_HOME="$SCRATCH_DIR/.cache/huggingface"
-export HF_DATASETS_CACHE="$SCRATCH_DIR/.cache/huggingface/datasets"
 export EVALUATE_CACHE_DIR="$SCRATCH_DIR/.cache/evaluate"
 export TRANSFORMERS_CACHE="$SCRATCH_DIR/.cache/transformers"
 export TMPDIR="$SCRATCH_DIR/tmp"
+export CUDA_CACHE_PATH="$TMPDIR/nv_cache"
 
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export TORCH_CUDA_IPC_DISABLE=1
-export TOKENIZERS_PARALLELISM=false
-export NCCL_P2P_DISABLE=1
-
-mkdir -p "$HF_HOME" "$HF_DATASETS_CACHE" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR"
+mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR" "$CUDA_CACHE_PATH"
 
 module purge
+module  load cuda
 module load anaconda
 conda activate urdu_manuscript_stable
 

@@ -117,7 +117,7 @@ class unification_urdu_lang_model:
         )
 
         self.min_pixels = 56 * 56
-        self.max_pixels = 768 * 28 * 28
+        self.max_pixels = 512 * 28 * 28
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
@@ -143,6 +143,7 @@ class unification_urdu_lang_model:
         )
 
         model = get_peft_model(model, peft_config)
+        model.enable_input_require_grads()
         model.print_trainable_parameters()
 
         data = get_datasets()
@@ -155,9 +156,9 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=2,
-            per_device_eval_batch_size=2,
-            gradient_accumulation_steps=4,
+            per_device_train_batch_size=1,
+            per_device_eval_batch_size=1,
+            gradient_accumulation_steps=8,
             gradient_checkpointing=True,
             num_train_epochs=1,
             dataloader_num_workers=0,
