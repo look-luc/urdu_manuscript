@@ -1,3 +1,4 @@
+import io
 from typing import cast
 
 from datasets import IterableDataset, interleave_datasets, load_dataset
@@ -22,6 +23,10 @@ def _all_same_type(example: dict):
                 raw_bytes = f.read()
         else:
             raise ValueError("Dict feature missing both 'bytes' and 'path'")
+    elif hasattr(feature, "save"):
+        buf = io.BytesIO()
+        feature.convert("RGB").save(buf, format="JPEG")
+        raw_bytes = buf.getvalue()
     else:
         raise ValueError(f"Unsupported image format: {type(feature)}")
 
