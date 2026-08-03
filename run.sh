@@ -33,8 +33,6 @@ module  load cuda
 module load anaconda
 conda activate urdu_manuscript_stable
 
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
-
 cd /projects/$USER/urdu_manuscript
 
 MODEL_TYPE=${1:-text_extraction}
