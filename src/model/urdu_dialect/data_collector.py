@@ -1,5 +1,4 @@
 import torch
-import torchvision.io as tv_io
 
 
 class Data_Collector:
@@ -11,9 +10,13 @@ class Data_Collector:
         assistant_tokens = self.processor.tokenizer.encode(
             "<|im_start|>assistant\n", add_special_tokens=False
         )
-        self.assistant_start_tensor = torch.tensor(assistant_tokens, dtype=torch.long)
+        self.assistant_start_tensor = torch.tensor(
+            assistant_tokens, dtype=torch.long
+        )
 
-    def _find_subsequence(self, sequence: torch.Tensor, pattern: torch.Tensor) -> int:
+    def _find_subsequence(
+        self, sequence: torch.Tensor, pattern: torch.Tensor
+    ) -> int:
         seq_len = sequence.size(0)
         pat_len = pattern.size(0)
 
@@ -29,16 +32,13 @@ class Data_Collector:
         return -1
 
     def __call__(self, features):
-        image_tensors = []
+        images = []
         text_prompts = []
 
         for feature in features:
-            raw_bytes = feature["image_bytes"]
-
-            # Decode byte buffer cleanly on main training thread using torchvision
-            byte_tensor = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
-            img_tensor = tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
-            image_tensors.append(img_tensor)
+            # Extract the PIL Image directly from the "image" key
+            img = feature["image"]
+            images.append(img)
 
             txt_content = feature.get("text", "")
 
@@ -46,7 +46,7 @@ class Data_Collector:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": img_tensor},
+                        {"type": "image", "image": img},
                         {"type": "text", "text": self.prompt},
                     ],
                 },
@@ -65,7 +65,7 @@ class Data_Collector:
 
         batch = self.processor(
             text=text_prompts,
-            images=image_tensors,
+            images=images,
             padding=True,
             return_tensors="pt",
         )
@@ -76,7 +76,9 @@ class Data_Collector:
 
         for i in range(len(features)):
             row_labels = labels[i]
-            match_idx = self._find_subsequence(row_labels, self.assistant_start_tensor)
+            match_idx = self._find_subsequence(
+                row_labels, self.assistant_start_tensor
+            )
 
             if match_idx != -1:
                 labels[i, : match_idx + pattern_len] = -100
