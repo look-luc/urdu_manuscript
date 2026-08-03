@@ -13,6 +13,7 @@ from transformers import (
     Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainingArguments,
+    default_data_collator,
 )
 
 root_dir = Path(__file__).resolve().parents[3]
@@ -20,8 +21,6 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from data.get_data import get_datasets
-
-from .data_collector import Data_Collector
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
@@ -139,7 +138,8 @@ class unification_urdu_lang_model:
         model = get_peft_model(model, peft_config)
         model.print_trainable_parameters()
 
-        data = get_datasets()
+        # Pass processor and prompt to dataset creator
+        data = get_datasets(processor=processor, prompt=self.prompt)
 
         return model, processor, data
 
@@ -173,10 +173,7 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=Data_Collector(
-                self.processor,
-                prompt=self.prompt,
-            ),
+            data_collator=default_data_collator,  # Using standard Hugging Face collator
             compute_metrics=self._compute_metrics,
         )
 
