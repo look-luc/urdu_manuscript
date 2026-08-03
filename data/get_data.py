@@ -1,7 +1,20 @@
 import io
+import urllib.request
 from typing import cast
 
 from datasets import IterableDataset, interleave_datasets, load_dataset
+
+
+def _fetch_bytes(path_or_url: str) -> bytes:
+    if path_or_url.startswith(("http://", "https://")):
+        req = urllib.request.Request(
+            path_or_url, headers={"User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req) as response:
+            return response.read()
+    else:
+        with open(path_or_url, "rb") as f:
+            return f.read()
 
 
 def _all_same_type(example: dict):
@@ -13,14 +26,12 @@ def _all_same_type(example: dict):
     if isinstance(feature, bytes):
         raw_bytes = feature
     elif isinstance(feature, str):
-        with open(feature, "rb") as f:
-            raw_bytes = f.read()
+        raw_bytes = _fetch_bytes(feature)
     elif isinstance(feature, dict):
         if feature.get("bytes") is not None:
             raw_bytes = feature["bytes"]
         elif feature.get("path") is not None:
-            with open(feature["path"], "rb") as f:
-                raw_bytes = f.read()
+            raw_bytes = _fetch_bytes(feature["path"])
         else:
             raise ValueError("Dict feature missing both 'bytes' and 'path'")
     elif hasattr(feature, "save"):
@@ -33,64 +44,71 @@ def _all_same_type(example: dict):
     example["image"] = raw_bytes
     return example
 
-def get_datasets(buffer_size:int=1000):
+
+def get_datasets(buffer_size: int = 1000):
     print("loading arabic")
     arabic_train = cast(
         IterableDataset,
-        load_dataset("MohamedRashad/arabic-img2md", split="train", streaming=True)
+        load_dataset("MohamedRashad/arabic-img2md", split="train", streaming=True),
     ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
+
     arabic_test = cast(
         IterableDataset,
-        load_dataset("MohamedRashad/arabic-img2md", split="test", streaming=True)
+        load_dataset("MohamedRashad/arabic-img2md", split="test", streaming=True),
     ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading arabic")
 
     print("loading persian")
     parsynth_train = cast(
         IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True)
+        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
     ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type)
+
     parsynth_test = cast(
         IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True)
+        load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
     ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type)
 
     persian_pixel = cast(
         IterableDataset,
-        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", streaming=True)
+        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading persian")
 
     print("loading urdu")
     nastaliq_raw_train = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", streaming=True)
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
+
     nastaliq_raw_val = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", streaming=True)
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     naskh_raw_train = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", streaming=True)
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
+
     naskh_raw_test = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", streaming=True)
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     urdu_news_train = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True)
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
+
     urdu_news_test = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True)
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
+
     urdu_news_val = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True)
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True),
     ).select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading urdu")
 
@@ -126,8 +144,8 @@ def get_datasets(buffer_size:int=1000):
             seed=42,
         ).shuffle(
             seed=42,
-            buffer_size=buffer_size
-        )
+            buffer_size=buffer_size,
+        ),
     )
 
     return {"train": train_dataset, "test": test_dataset}
