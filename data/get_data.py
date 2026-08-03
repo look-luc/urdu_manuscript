@@ -9,7 +9,7 @@ from datasets import IterableDataset, interleave_datasets, load_dataset
 
 
 def to_torchvision_rgb(example):
-    """Decodes image sources (base64, raw bytes, file paths, array objects) to RGB torch.Tensor using torchvision.io and numpy."""
+    """Decodes image sources to RGB torch.Tensor using torchvision.io and numpy without PIL."""
     img_data = example.get("image") or example.get("image_path") or example.get("image_base64")
     txt_data = example.get("text") or example.get("markdown") or example.get("chunk")
 
@@ -32,17 +32,17 @@ def to_torchvision_rgb(example):
 
     else:
         try:
-            # Coerces array-like objects via Python buffer protocol without PIL
+            # Converts image buffers directly to NumPy arrays without requiring PIL imports
             arr = np.asarray(img_data)
             img_tensor = torch.from_numpy(arr)
             if img_tensor.ndim == 3 and img_tensor.shape[-1] in (3, 4):
-                if img_tensor.shape[-1] == 4:  # Handle RGBA to RGB
+                if img_tensor.shape[-1] == 4:  # Strip alpha channel if RGBA
                     img_tensor = img_tensor[:, :, :3]
                 img_tensor = img_tensor.permute(2, 0, 1)
         except Exception:
             raise ValueError(f"Unsupported image payload type: {type(img_data)}")
 
-    # Ensure final output shape is (H, W, C) for your downstream processor pipeline
+    # Standardize output shape to (H, W, C) for processor compatibility
     if img_tensor.ndim == 3 and img_tensor.shape[0] in (1, 3):
         img_tensor = img_tensor.permute(1, 2, 0)
 
@@ -50,14 +50,14 @@ def to_torchvision_rgb(example):
 
 
 def _prepare_stream(dataset_name: str, split: str, name: str = "") -> IterableDataset:
-    """Helper function to load dataset streams and disable automatic PIL image decoding."""
+    """Loads a dataset stream and disables automatic PIL image decoding."""
     kwargs = {"split": split, "streaming": True}
     if name:
         kwargs["name"] = name
 
     ds = load_dataset(dataset_name, **kwargs)
 
-    # Prevents Hugging Face from generating PIL objects upstream
+    # Disables automatic PIL object generation upstream
     if "image" in ds.features:
         ds = ds.cast_column("image", datasets.Image(decode=False))
 
@@ -84,7 +84,6 @@ def get_datasets(buffer_size: int = 100):
     urdu_news_train = _prepare_stream("oddadmix/qari-0.2.2-news-dataset-large", split="train")
     urdu_news_test = _prepare_stream("oddadmix/qari-0.2.2-news-dataset-large", split="test")
 
-    # Interleave sub-streams cleanly
     urdu_ds_train = interleave_datasets(
         [nastaliq_raw.skip(1000), naskh_raw.skip(1000), urdu_news_train],
         seed=42,
