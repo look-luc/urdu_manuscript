@@ -1,13 +1,15 @@
 import base64
 from typing import cast
 
+import datasets
+import numpy as np
 import torch
 import torchvision.io as tv_io
 from datasets import IterableDataset, interleave_datasets, load_dataset
 
 
 def to_torchvision_rgb(example):
-    """Decodes image sources (base64, raw bytes, file paths) to RGB torch.Tensor using torchvision.io."""
+    """Decodes image sources (base64, raw bytes, file paths, array objects) to RGB torch.Tensor using torchvision.io and numpy."""
     img_data = example.get("image") or example.get("image_path") or example.get("image_base64")
     txt_data = example.get("text") or example.get("markdown") or example.get("chunk")
 
@@ -28,68 +30,59 @@ def to_torchvision_rgb(example):
     elif isinstance(img_data, torch.Tensor):
         img_tensor = img_data
 
-    elif hasattr(img_data, "__array__"):
-        import numpy as np
-        arr = np.asarray(img_data)
-        img_tensor = torch.from_numpy(arr)
-        if img_tensor.ndim == 3 and img_tensor.shape[-1] == 3:
-            img_tensor = img_tensor.permute(2, 0, 1)
-
     else:
-        raise ValueError(f"Unsupported image payload type: {type(img_data)}")
+        try:
+            # Coerces array-like objects via Python buffer protocol without PIL
+            arr = np.asarray(img_data)
+            img_tensor = torch.from_numpy(arr)
+            if img_tensor.ndim == 3 and img_tensor.shape[-1] in (3, 4):
+                if img_tensor.shape[-1] == 4:  # Handle RGBA to RGB
+                    img_tensor = img_tensor[:, :, :3]
+                img_tensor = img_tensor.permute(2, 0, 1)
+        except Exception:
+            raise ValueError(f"Unsupported image payload type: {type(img_data)}")
 
-    img_tensor = img_tensor.permute(1, 2, 0)
+    # Ensure final output shape is (H, W, C) for your downstream processor pipeline
+    if img_tensor.ndim == 3 and img_tensor.shape[0] in (1, 3):
+        img_tensor = img_tensor.permute(1, 2, 0)
 
     return {"image": img_tensor, "text": str(txt_data)}
+
+
+def _prepare_stream(dataset_name: str, split: str, name: str = "") -> IterableDataset:
+    """Helper function to load dataset streams and disable automatic PIL image decoding."""
+    kwargs = {"split": split, "streaming": True}
+    if name:
+        kwargs["name"] = name
+
+    ds = load_dataset(dataset_name, **kwargs)
+
+    # Prevents Hugging Face from generating PIL objects upstream
+    if "image" in ds.features:
+        ds = ds.cast_column("image", datasets.Image(decode=False))
+
+    return cast(
+        IterableDataset,
+        ds.map(to_torchvision_rgb).select_columns(["image", "text"])
+    )
 
 
 def get_datasets(buffer_size: int = 100):
     print(f"Loading datasets with torchvision.io pipeline (buffer_size={buffer_size})...")
 
-    arabic_train = cast(
-        IterableDataset,
-        load_dataset("MohamedRashad/arabic-img2md", split="train", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
+    arabic_train = _prepare_stream("MohamedRashad/arabic-img2md", split="train")
+    arabic_test = _prepare_stream("MohamedRashad/arabic-img2md", split="test")
 
-    arabic_test = cast(
-        IterableDataset,
-        load_dataset("MohamedRashad/arabic-img2md", split="test", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
+    parsynth_train = _prepare_stream("hezarai/parsynth-ocr-200k", split="train")
+    parsynth_test = _prepare_stream("hezarai/parsynth-ocr-200k", split="test")
 
-    parsynth_train = cast(
-        IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
+    persian_pixel = _prepare_stream("Omarrran/Persian_Pixel", name="full", split="train")
 
-    parsynth_test = cast(
-        IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
+    nastaliq_raw = _prepare_stream("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train")
+    naskh_raw = _prepare_stream("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train")
 
-    persian_pixel = cast(
-        IterableDataset,
-        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
-
-    nastaliq_raw = cast(
-        IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", "nastaliq", split="train", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
-
-    naskh_raw = cast(
-        IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", "naskh", split="train", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
-
-    urdu_news_train = cast(
-        IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
-
-    urdu_news_test = cast(
-        IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True),
-    ).map(to_torchvision_rgb).select_columns(["image", "text"])
+    urdu_news_train = _prepare_stream("oddadmix/qari-0.2.2-news-dataset-large", split="train")
+    urdu_news_test = _prepare_stream("oddadmix/qari-0.2.2-news-dataset-large", split="test")
 
     # Interleave sub-streams cleanly
     urdu_ds_train = interleave_datasets(
