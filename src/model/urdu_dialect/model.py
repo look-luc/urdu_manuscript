@@ -150,8 +150,8 @@ class unification_urdu_lang_model:
         return model, processor, data
 
     def train(self):
-        train_dataset = self.data["train"].to(self.device)
-        test_dataset = self.data["test"].to(self.device)
+        train_dataset = self.data["train"]
+        test_dataset = self.data["test"]
 
         # self.model.enable_input_require_grads()
         # self.model.gradient_checkpointing_enable()

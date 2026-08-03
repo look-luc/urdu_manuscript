@@ -1,36 +1,31 @@
 from typing import cast
 
-import torch
-import torchvision.io as tv_io
 from datasets import IterableDataset, interleave_datasets, load_dataset
-from torchvision.transforms.functional import to_pil_image
 
 
-def _all_same_type(example:dict):
-    if "image" in example.keys():
-        feature = example.get("image")
-    else:
+def _all_same_type(example: dict):
+    if "image" not in example:
         raise ValueError("image is not a column of data")
 
-    if isinstance(feature, str):
-        example["image"] =  to_pil_image(tv_io.read_image(feature, mode=tv_io.ImageReadMode.RGB))
-    elif isinstance(feature, bytes):
-        example["image"] = to_pil_image(tv_io.decode_image(torch.frombuffer(feature, dtype=torch.uint8), mode=tv_io.ImageReadMode.RGB))
-    elif isinstance(feature, dict):
-        if "bytes" in feature and feature["bytes"] is not None:
-            byte_buffer = torch.frombuffer(feature["bytes"], dtype=torch.uint8)
-            tensor = tv_io.decode_image(byte_buffer, mode=tv_io.ImageReadMode.RGB)
-            example["image"] = to_pil_image(tensor)
-        elif "path" in feature and feature["path"] is not None:
-            tensor = tv_io.read_image(feature["path"], mode=tv_io.ImageReadMode.RGB)
-            example["image"] = to_pil_image(tensor)
+    feature = example["image"]
 
-    elif isinstance(feature, torch.Tensor):
-        example["image"] = to_pil_image(feature)
-    elif hasattr(feature, "size") and hasattr(feature, "mode"):
-        pass
+    if isinstance(feature, bytes):
+        raw_bytes = feature
+    elif isinstance(feature, str):
+        with open(feature, "rb") as f:
+            raw_bytes = f.read()
+    elif isinstance(feature, dict):
+        if feature.get("bytes") is not None:
+            raw_bytes = feature["bytes"]
+        elif feature.get("path") is not None:
+            with open(feature["path"], "rb") as f:
+                raw_bytes = f.read()
+        else:
+            raise ValueError("Dict feature missing both 'bytes' and 'path'")
     else:
-        raise ValueError("Unsupported image format")
+        raise ValueError(f"Unsupported image format: {type(feature)}")
+
+    example["image"] = raw_bytes
     return example
 
 def get_datasets(buffer_size:int=1000):
