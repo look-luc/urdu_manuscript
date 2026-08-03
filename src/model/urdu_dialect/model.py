@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
-from torchmetrics.text import WordInfoPreserved
+from torchmetrics.text import EditDistance
 from transformers import (
     AutoConfig,
     AutoProcessor,
@@ -26,7 +26,7 @@ from .data_collector import Data_Collector
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
-f1_metric = WordInfoPreserved()
+f1_metric = EditDistance()
 
 
 class unification_urdu_lang_model:
@@ -87,22 +87,23 @@ class unification_urdu_lang_model:
         bleu_targets = [[label] for label in decoded_labels]
 
         f1_metric.update(decoded_preds, decoded_labels)
+        f1_score = f1_metric.compute()
+        f1_metric.reset()
 
         try:
             bleu_score_val = bleu_score(decoded_preds, bleu_targets).item()
         except Exception:
             bleu_score_val = 0.0
 
-        return {"F1": f1_metric, "CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
+        return {"F1": f1_score, "CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
-
-        gc.collect()
-        torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-        if torch.cuda.is_available():
+        if self.device == "cuda":
+            gc.collect()
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
             torch.cuda.reset_peak_memory_stats()
 
         config = AutoConfig.from_pretrained(self.model_id)
@@ -149,11 +150,11 @@ class unification_urdu_lang_model:
         return model, processor, data
 
     def train(self):
-        train_dataset = self.data["train"]
-        test_dataset = self.data["test"]
+        train_dataset = self.data["train"].to(self.device)
+        test_dataset = self.data["test"].to(self.device)
 
-        self.model.enable_input_require_grads()
-        self.model.gradient_checkpointing_enable()
+        # self.model.enable_input_require_grads()
+        # self.model.gradient_checkpointing_enable()
 
         training_args = TrainingArguments(
             output_dir="./results",
