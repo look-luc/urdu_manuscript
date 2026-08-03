@@ -1,5 +1,6 @@
 import torch
 import torchvision.io as tv_io
+from torchvision.transforms.functional import to_pil_image
 
 
 class Data_Collector:
@@ -40,7 +41,9 @@ class Data_Collector:
             img_raw = feature["image"]
 
             if isinstance(img_raw, bytes):
-                byte_buffer = torch.frombuffer(img_raw, dtype=torch.uint8)
+                byte_buffer = torch.frombuffer(
+                    bytearray(img_raw), dtype=torch.uint8
+                )
                 img_tensor = tv_io.decode_image(
                     byte_buffer, mode=tv_io.ImageReadMode.RGB
                 )
@@ -51,14 +54,15 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            images.append(img_tensor)
+            pil_img = to_pil_image(img_tensor)
+            images.append(pil_img)
             txt_content = feature.get("text", "")
 
             messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": img_tensor},
+                        {"type": "image", "image": pil_img},
                         {"type": "text", "text": self.prompt},
                     ],
                 },

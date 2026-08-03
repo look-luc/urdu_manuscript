@@ -168,7 +168,7 @@ class unification_urdu_lang_model:
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
-            warmup_ratio=0.05,
+            warmup_steps=125,
             lr_scheduler_type="cosine",
         )
 
