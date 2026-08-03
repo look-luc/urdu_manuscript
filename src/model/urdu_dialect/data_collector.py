@@ -1,55 +1,89 @@
 import torch
+import torchvision.io as tv_io
 
 
 class Data_Collector:
-    def __init__(self, processor):
+    def __init__(self, processor, prompt: str = ""):
         self.processor = processor
+        self.prompt = prompt
         self.pad_token_id = self.processor.tokenizer.pad_token_id
-        self.assistant_start_token = self.processor.tokenizer.encode("<|im_start|>assistant\n", add_special_tokens=False)
 
-    def __call__(self, features):# features is a list of dicts returned by the dataset's _process function
-        # Separates the text tensors from visual features
-        input_ids_list = [feature["input_ids"] for feature in features]
-        attention_mask_list = [feature["attention_mask"] for feature in features]
+        assistant_tokens = self.processor.tokenizer.encode(
+            "<|im_start|>assistant\n", add_special_tokens=False
+        )
+        self.assistant_start_tensor = torch.tensor(assistant_tokens, dtype=torch.long)
 
-        # Extracts the visual features safely
-        pixel_values = [feature["pixel_values"] for feature in features]
-        image_grid_thw = [feature["image_grid_thw"] for feature in features]
+    def _find_subsequence(self, sequence: torch.Tensor, pattern: torch.Tensor) -> int:
+        seq_len = sequence.size(0)
+        pat_len = pattern.size(0)
 
-        # Dynamic Padding
-        # Pad the text tensors so they are all uniform length across this batch
-        padded_inputs = self.processor.tokenizer.pad(
-            {
-                "input_ids": input_ids_list,
-                "attention_mask": attention_mask_list
-            },
+        if pat_len > seq_len:
+            return -1
+
+        windows = sequence.unfold(0, pat_len, 1)
+        matches = (windows == pattern).all(dim=1)
+        indices = torch.nonzero(matches, as_tuple=True)[0]
+
+        if len(indices) > 0:
+            return indices[0].item()
+        return -1
+
+    def __call__(self, features):
+        image_tensors = []
+        text_prompts = []
+
+        for feature in features:
+            raw_bytes = feature["image_bytes"]
+
+            # Decode byte buffer cleanly on main training thread using torchvision
+            byte_tensor = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
+            img_tensor = tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
+            image_tensors.append(img_tensor)
+
+            txt_content = feature.get("text", "")
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": img_tensor},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": txt_content},
+                    ],
+                },
+            ]
+
+            formatted_text = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            text_prompts.append(formatted_text)
+
+        batch = self.processor(
+            text=text_prompts,
+            images=image_tensors,
             padding=True,
-            return_tensors="pt"
+            return_tensors="pt",
         )
 
-        input_ids = padded_inputs["input_ids"] # the ids for the inputs after being padded
-        attention_mask = padded_inputs["attention_mask"] # attention masks after being padded
-
-        # Create a copy of input_ids to act as your target labels
+        input_ids = batch["input_ids"]
         labels = input_ids.clone()
+        pattern_len = self.assistant_start_tensor.size(0)
 
-        # going row by row
         for i in range(len(features)):
             row_labels = labels[i]
+            match_idx = self._find_subsequence(row_labels, self.assistant_start_tensor)
 
-            for row in range(len(row_labels)-len(self.assistant_start_token)+1):
-                # determining if window of size current row to the current row + how ever long the assistant start token is
-                if row_labels[row:row+len(self.assistant_start_token)].tolist() == self.assistant_start_token:
-                    labels[i, :row+len(self.assistant_start_token)] = -100 #will assign the range to the value specified; labels is a torch tensor not a list
-                    break
+            if match_idx != -1:
+                labels[i, : match_idx + pattern_len] = -100
+            else:
+                labels[i, :] = -100
 
-        # Collate everything into a dictionary matching the model forward pass signatures
-        batch = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-            "pixel_values": torch.cat(pixel_values, dim=0),
-            "image_grid_thw": torch.cat(image_grid_thw, dim=0)
-        }
+        labels[labels == self.pad_token_id] = -100
+        batch["labels"] = labels
 
         return batch

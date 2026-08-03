@@ -7,13 +7,13 @@ import numpy as np
 import torch
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
+from torchmetrics.text import WordInfoPreserved
 from transformers import (
     AutoConfig,
     AutoProcessor,
     Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainingArguments,
-    default_data_collator,
 )
 
 root_dir = Path(__file__).resolve().parents[3]
@@ -22,8 +22,11 @@ if str(root_dir) not in sys.path:
 
 from data.get_data import get_datasets
 
+from .data_collector import Data_Collector
+
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
+f1_metric = WordInfoPreserved()
 
 
 class unification_urdu_lang_model:
@@ -36,7 +39,8 @@ class unification_urdu_lang_model:
         """,
         batch_size: int = 64,
     ) -> None:
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        torch.device(self.device)
 
         self.model_id = model_id
         self.prompt = prompt
@@ -82,12 +86,14 @@ class unification_urdu_lang_model:
 
         bleu_targets = [[label] for label in decoded_labels]
 
+        f1_metric.update(decoded_preds, decoded_labels)
+
         try:
             bleu_score_val = bleu_score(decoded_preds, bleu_targets).item()
         except Exception:
             bleu_score_val = 0.0
 
-        return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
+        return {"F1": f1_metric, "CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
         if self.device != "cuda":
@@ -138,8 +144,7 @@ class unification_urdu_lang_model:
         model = get_peft_model(model, peft_config)
         model.print_trainable_parameters()
 
-        # Pass processor and prompt to dataset creator
-        data = get_datasets(processor=processor, prompt=self.prompt)
+        data = get_datasets()
 
         return model, processor, data
 
@@ -173,7 +178,10 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=default_data_collator,  # Using standard Hugging Face collator
+            data_collator=Data_Collector(
+                self.processor,
+                prompt=self.prompt,
+            ),
             compute_metrics=self._compute_metrics,
         )
 
