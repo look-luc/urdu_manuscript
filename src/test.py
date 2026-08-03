@@ -10,7 +10,7 @@ if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
 from data.get_data import get_datasets
-from model.urdu_dialect.data_collector import QwenDataCollator
+from model.urdu_dialect.data_collector import Data_Collector
 
 
 def run_diagnostics():
@@ -39,7 +39,7 @@ def run_diagnostics():
             min_pixels=28 * 28,
             max_pixels=512 * 28 * 28,
         )
-        collator = QwenDataCollator(processor=processor, prompt=prompt)
+        collator = Data_Collector(processor=processor)
         batch = collator([sample])
         print(f"-> [STAGE 2 SUCCESS] Input IDs shape: {batch['input_ids'].shape}", flush=True)
     except Exception as e:

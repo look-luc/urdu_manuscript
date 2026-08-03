@@ -21,7 +21,7 @@ if str(root_dir) not in sys.path:
 
 from data.get_data import get_datasets
 
-from .data_collector import QwenDataCollator
+from .data_collector import Data_Collector
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
@@ -173,11 +173,8 @@ class unification_urdu_lang_model:
             args=training_args,
             train_dataset=train_dataset,
             eval_dataset=test_dataset,
-            data_collator=QwenDataCollator(
+            data_collator=Data_Collector(
                 self.processor,
-                prompt=self.prompt,
-                min_pixels=self.min_pixels,
-                max_pixels=self.max_pixels,
             ),
             compute_metrics=self._compute_metrics,
         )
