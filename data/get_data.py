@@ -9,7 +9,6 @@ from datasets import IterableDataset, interleave_datasets, load_dataset
 
 
 def to_torchvision_rgb(example):
-    """Decodes image sources to RGB torch.Tensor using torchvision.io and numpy without PIL."""
     img_data = example.get("image") or example.get("image_path") or example.get("image_base64")
     txt_data = example.get("text") or example.get("markdown") or example.get("chunk")
 
@@ -17,11 +16,11 @@ def to_torchvision_rgb(example):
         if "," in img_data:
             img_data = img_data.split(",", 1)[1]
         raw_bytes = base64.b64decode(img_data)
-        byte_tensor = torch.frombuffer(raw_bytes, dtype=torch.uint8)
+        byte_tensor = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
         img_tensor = tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
 
     elif isinstance(img_data, dict) and "bytes" in img_data and img_data["bytes"]:
-        byte_tensor = torch.frombuffer(img_data["bytes"], dtype=torch.uint8)
+        byte_tensor = torch.frombuffer(bytearray(img_data["bytes"]), dtype=torch.uint8)
         img_tensor = tv_io.decode_image(byte_tensor, mode=tv_io.ImageReadMode.RGB)
 
     elif isinstance(img_data, str):
@@ -32,7 +31,6 @@ def to_torchvision_rgb(example):
 
     else:
         try:
-            # Converts image buffers directly to NumPy arrays without requiring PIL imports
             arr = np.asarray(img_data)
             img_tensor = torch.from_numpy(arr)
             if img_tensor.ndim == 3 and img_tensor.shape[-1] in (3, 4):
@@ -42,11 +40,12 @@ def to_torchvision_rgb(example):
         except Exception:
             raise ValueError(f"Unsupported image payload type: {type(img_data)}")
 
-    # Standardize output shape to (H, W, C) for processor compatibility
     if img_tensor.ndim == 3 and img_tensor.shape[0] in (1, 3):
         img_tensor = img_tensor.permute(1, 2, 0)
 
-    return {"image": img_tensor, "text": str(txt_data)}
+    img_numpy = img_tensor.cpu().numpy() if isinstance(img_tensor, torch.Tensor) else np.asarray(img_tensor)
+
+    return {"image": img_numpy, "text": str(txt_data)}
 
 
 def _prepare_stream(dataset_name: str, split: str, name: str = "") -> IterableDataset:
