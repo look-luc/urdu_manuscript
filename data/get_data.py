@@ -38,11 +38,11 @@ def get_datasets(buffer_size:int=1000):
     arabic_train = cast(
         IterableDataset,
         load_dataset("MohamedRashad/arabic-img2md", split="train", streaming=True)
-    ).rename_column("mardown", "text").select_columns(["image", "text"]).map(_all_same_type)
+    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
     arabic_test = cast(
         IterableDataset,
         load_dataset("MohamedRashad/arabic-img2md", split="test", streaming=True)
-    ).rename_column("mardown", "text").select_columns(["image", "text"]).map(_all_same_type)
+    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading arabic")
 
     print("loading persian")
