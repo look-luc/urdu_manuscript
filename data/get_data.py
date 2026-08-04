@@ -1,10 +1,11 @@
 import io
+import os
 import urllib.request
 from typing import cast
 
 from datasets import Dataset, IterableDataset, interleave_datasets, load_dataset
 
-
+CACHE_DIR = os.getenv("HF_HOME", "/scratch/alpine/" + os.getenv("USER", "") + "/.cache/huggingface")
 def _fetch_bytes(path_or_url: str) -> bytes:
     if path_or_url.startswith(("http://", "https://")):
         req = urllib.request.Request(
@@ -49,66 +50,66 @@ def get_datasets(buffer_size: int = 1000):
     print("loading arabic")
     arabic_train = cast(
         IterableDataset,
-        load_dataset("MohamedRashad/arabic-img2md", split="train", streaming=True),
+        load_dataset("MohamedRashad/arabic-img2md", split="train", cache_dir=CACHE_DIR),
     ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
 
     arabic_test = cast(
         IterableDataset,
-        load_dataset("MohamedRashad/arabic-img2md", split="test", streaming=True),
+        load_dataset("MohamedRashad/arabic-img2md", split="test", cache_dir=CACHE_DIR),
     ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading arabic")
 
     print("loading persian")
     parsynth_train = cast(
         IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="train", streaming=True),
+        load_dataset("hezarai/parsynth-ocr-200k", split="train", cache_dir=CACHE_DIR),
     ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type)
 
     parsynth_test = cast(
         IterableDataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="test", streaming=True),
+        load_dataset("hezarai/parsynth-ocr-200k", split="test", cache_dir=CACHE_DIR),
     ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type)
 
     persian_pixel = cast(
         IterableDataset,
-        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", streaming=True),
+        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading persian")
 
     print("loading urdu")
     nastaliq_raw_train = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", streaming=True),
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     nastaliq_raw_val = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", streaming=True),
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     naskh_raw_train = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", streaming=True),
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     naskh_raw_test = cast(
         IterableDataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", streaming=True),
+        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     urdu_news_train = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", streaming=True),
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     urdu_news_test = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", streaming=True),
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
 
     urdu_news_val = cast(
         IterableDataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", streaming=True),
+        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading urdu")
 
