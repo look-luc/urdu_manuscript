@@ -1,5 +1,6 @@
 import torch
 import torchvision.io as tv_io
+import torchvision.transforms.functional as F
 
 
 def pad_to_square(img_tensor: torch.Tensor, min_square_dim: int = 112) -> torch.Tensor:
@@ -51,14 +52,15 @@ class Data_Collector:
                 )
 
             img_tensor = pad_to_square(img_tensor)
-            images.append(img_tensor)
+            pil_img = F.to_pil_image(img_tensor.cpu())
+            images.append(pil_img)
             txt_content = feature.get("text", "")
 
             user_messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": img_tensor},
+                        {"type": "image", "image": pil_img},
                         {"type": "text", "text": self.prompt},
                     ],
                 }
