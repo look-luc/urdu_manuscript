@@ -6,7 +6,12 @@ from typing import cast
 from datasets import Dataset, interleave_datasets, load_dataset
 
 CACHE_DIR = os.getenv("HF_HOME", f"/scratch/alpine/{os.getenv('USER', '')}/.cache/huggingface")
-NUM_PROC = os.cpu_count() or 1
+
+SLURM_CPUS = os.getenv("SLURM_CPUS_PER_TASK")
+SYSTEM_CPUS = int(SLURM_CPUS) if SLURM_CPUS else (os.cpu_count() or 1)
+NUM_PROC = min(SYSTEM_CPUS, 16)
+
+MAP_BATCH_SIZE = 256
 
 
 def _fetch_bytes(path_or_url: str) -> bytes:
@@ -50,71 +55,76 @@ def _all_same_type(batch: dict) -> dict:
 
 
 def get_datasets(buffer_size: int = 1000):
-    print("loading arabic")
+    map_config = {
+        "function": _all_same_type,
+        "batched": True,
+        "batch_size": MAP_BATCH_SIZE,
+        "writer_batch_size": MAP_BATCH_SIZE,
+        "num_proc": NUM_PROC,
+    }
+
+    print(f"Loading arabic datasets with {NUM_PROC} workers (batch_size={MAP_BATCH_SIZE})...")
     arabic_train = cast(
         Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="train", cache_dir=CACHE_DIR),
-    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(**map_config)
 
     arabic_test = cast(
         Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="test", cache_dir=CACHE_DIR),
-    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
-    print("finish loading arabic")
+    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(**map_config)
 
-    print("loading persian")
+    print("Loading persian datasets...")
     parsynth_train = cast(
         Dataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="train", cache_dir=CACHE_DIR),
-    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(**map_config)
 
     parsynth_test = cast(
         Dataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", cache_dir=CACHE_DIR),
-    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(**map_config)
 
     persian_pixel = cast(
         Dataset,
         load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
-    print("finish loading persian")
+    ).select_columns(["image", "text"]).map(**map_config)
 
-    print("loading urdu")
+    print("Loading urdu datasets...")
     nastaliq_raw_train = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).select_columns(["image", "text"]).map(**map_config)
 
     nastaliq_raw_val = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).select_columns(["image", "text"]).map(**map_config)
 
     naskh_raw_train = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).select_columns(["image", "text"]).map(**map_config)
 
     naskh_raw_test = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).select_columns(["image", "text"]).map(**map_config)
 
     urdu_news_train = cast(
         Dataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).select_columns(["image", "text"]).map(**map_config)
 
     urdu_news_test = cast(
         Dataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
+    ).select_columns(["image", "text"]).map(**map_config)
 
     urdu_news_val = cast(
         Dataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
-    print("finish loading urdu")
+    ).select_columns(["image", "text"]).map(**map_config)
 
     urdu_historical_train = interleave_datasets(
         [nastaliq_raw_train, naskh_raw_train],
@@ -135,7 +145,6 @@ def get_datasets(buffer_size: int = 1000):
     ]
     test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
 
-    # Separate train sources to allow explicit sampling control
     train_sources = [
         arabic_train,
         parsynth_train,
