@@ -10,8 +10,8 @@ from torchmetrics.functional.text import bleu_score
 from torchmetrics.text import EditDistance
 from transformers import (
     AutoConfig,
-    AutoModel,
-    AutoProcessor,
+    LlavaNextForConditionalGeneration,
+    LlavaNextProcessor,
     Trainer,
     TrainingArguments,
 )
@@ -32,7 +32,7 @@ f1_metric = EditDistance()
 class unification_urdu_lang_model:
     def __init__(
         self,
-        model_id: str = "OpenGVLab/InternVL2-8B",
+        model_id: str = "llava-hf/llama3-llava-next-8b-hf",
         prompt: str = """
             You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
@@ -113,19 +113,14 @@ class unification_urdu_lang_model:
             torch.backends.cudnn.enabled = False
             torch.backends.cudnn.benchmark = False
 
-        config = AutoConfig.from_pretrained(
-            self.model_id, trust_remote_code=True
-        )
+        config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
 
-        model = AutoModel.from_pretrained(
+        model = LlavaNextForConditionalGeneration.from_pretrained(
             self.model_id,
-            torch_dtype=torch.bfloat16,
-            load_in_8bit=True,
-            low_cpu_mem_usage=True,
-            use_flash_attn=True,
-            trust_remote_code=True,
             device_map={"": self.device},
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
         )
 
         processor = AutoProcessor.from_pretrained(

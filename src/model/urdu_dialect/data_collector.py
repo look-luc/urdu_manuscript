@@ -3,7 +3,7 @@ import torchvision.io as tv_io
 import torchvision.transforms.functional as F
 
 
-def pad_to_min_dim(img_tensor: torch.Tensor, min_dim: int = 448) -> torch.Tensor:
+def pad_to_min_dim(img_tensor: torch.Tensor, min_dim: int = 336) -> torch.Tensor:
     c, h, w = img_tensor.shape
     new_h = max(h, min_dim)
     new_w = max(w, min_dim)
@@ -54,7 +54,8 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            img_tensor = pad_to_min_dim(img_tensor, min_dim=448)
+            # LLaVA-NeXT base patch size is 336x336
+            img_tensor = pad_to_min_dim(img_tensor, min_dim=336)
             pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
             images.append(pil_img)
             txt_content = feature.get("text", "")
@@ -63,26 +64,33 @@ class Data_Collector:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": pil_img},
+                        {"type": "image"},
                         {"type": "text", "text": self.prompt},
                     ],
                 }
             ]
 
-            full_messages = user_messages + [
+            full_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
                 {
                     "role": "assistant",
                     "content": [
                         {"type": "text", "text": txt_content},
                     ],
-                }
+                },
             ]
 
             user_prompt_text = self.processor.apply_chat_template(
-                user_messages, tokenize=False, add_generation_prompt=True
+                user_messages, add_generation_prompt=True
             )
             full_text = self.processor.apply_chat_template(
-                full_messages, tokenize=False, add_generation_prompt=False
+                full_messages, add_generation_prompt=False
             )
 
             user_text_prompts.append(user_prompt_text)
