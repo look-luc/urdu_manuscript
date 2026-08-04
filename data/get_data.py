@@ -112,12 +112,12 @@ def get_datasets(buffer_size: int = 1000):
     ).select_columns(["image", "text"]).map(_all_same_type)
     print("finish loading urdu")
 
-    urdu_ds_train = interleave_datasets(
-        [nastaliq_raw_train, naskh_raw_train, urdu_news_train],
+    urdu_historical_train = interleave_datasets(
+        [nastaliq_raw_train, naskh_raw_train],
         seed=42,
     )
     urdu_ds_test = interleave_datasets(
-        [nastaliq_raw_val, naskh_raw_test, urdu_news_test, urdu_news_val],
+        [nastaliq_raw_val, naskh_raw_test],
         seed=42,
     )
 
@@ -126,20 +126,25 @@ def get_datasets(buffer_size: int = 1000):
         parsynth_test,
         persian_pixel.take(100000),
         urdu_ds_test,
+        urdu_news_test,
+        urdu_news_val
     ]
     test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
 
+    # Separate train sources to allow explicit sampling control
     train_sources = [
         arabic_train,
         parsynth_train,
         persian_pixel.skip(100000),
-        urdu_ds_train,
+        urdu_historical_train,
+        urdu_news_train,
     ]
+
     train_dataset = cast(
         Dataset,
         interleave_datasets(
             datasets=train_sources,
-            probabilities=[0.15, 0.175, 0.175, 0.50],
+            probabilities=[0.20, 0.15, 0.15, 0.40, 0.10],
             stopping_strategy="all_exhausted",
             seed=42,
         ).shuffle(
