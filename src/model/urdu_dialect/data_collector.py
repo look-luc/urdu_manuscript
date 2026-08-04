@@ -1,19 +1,28 @@
 import torch
 import torchvision.io as tv_io
-from PIL import Image
 from torchvision.transforms.functional import to_pil_image
 
 
-def pad_image_if_needed(pil_img: Image.Image, min_dim: int = 28) -> Image.Image:
-    """Pads images below min_dim onto a white background to prevent patch grid collapse."""
-    w, h = pil_img.size
+def pad_image_if_needed(img_tensor: torch.Tensor, min_dim: int = 56) -> torch.Tensor:
+    c, h, w = img_tensor.shape
     if w < min_dim or h < min_dim:
         new_w = max(w, min_dim)
         new_h = max(h, min_dim)
-        padded_img = Image.new("RGB", (new_w, new_h), (255, 255, 255))
-        padded_img.paste(pil_img, ((new_w - w) // 2, (new_h - h) // 2))
-        return padded_img
-    return pil_img
+
+        padded_tensor = torch.full(
+            (c, new_h, new_w),
+            fill_value=255,
+            dtype=img_tensor.dtype,
+            device=img_tensor.device
+        )
+
+        top = (new_h - h) // 2
+        left = (new_w - w) // 2
+
+        padded_tensor[:, top : top + h, left : left + w] = img_tensor
+        return padded_tensor
+
+    return img_tensor
 
 
 class Data_Collector:

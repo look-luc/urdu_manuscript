@@ -38,7 +38,5 @@ export LD_LIBRARY_PATH="$SITE_PKG/nvidia/cudnn/lib:$SITE_PKG/nvidia/cuda_runtime
 
 cd /projects/$USER/urdu_manuscript
 
-python -c "import torch; print('CUDA Available:', torch.cuda.is_available()); print('cuDNN Enabled:', torch.backends.cudnn.enabled); print('Device Name:', torch.cuda.get_device_name(0)); x = torch.randn(2, 2).cuda(); print('Tensor CUDA Test Success!')"
-
 MODEL_TYPE=${1:-text_extraction}
 python -u run.py -o "$MODEL_TYPE"

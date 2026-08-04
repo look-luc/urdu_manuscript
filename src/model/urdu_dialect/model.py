@@ -120,7 +120,7 @@ class unification_urdu_lang_model:
             torch_dtype=torch.bfloat16,
         )
 
-        self.min_pixels = 28//2 * 28//2
+        self.min_pixels = 56 * 56
         self.max_pixels = 256 * 28 * 28  # Reduced to avoid vision token memory spikes
 
         processor = AutoProcessor.from_pretrained(
