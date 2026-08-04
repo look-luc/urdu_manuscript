@@ -1,4 +1,5 @@
 import gc
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,7 @@ cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 f1_metric = EditDistance()
 
+ALLOCATED_CPU =  os.environ.get('SLURM_CPUS_PER_TASK')
 
 class unification_urdu_lang_model:
     def __init__(
@@ -171,11 +173,13 @@ class unification_urdu_lang_model:
             output_dir="./results",
             per_device_train_batch_size=1,
             per_device_eval_batch_size=1,
-            gradient_accumulation_steps=8,
+            gradient_accumulation_steps=int(ALLOCATED_CPU) if ALLOCATED_CPU is not None else 8,
+            dataloader_pin_memory=True,
+            dataloader_prefetch_factor=2,
             gradient_checkpointing=True,
-            num_train_epochs=1,
             dataloader_num_workers=4,
             dataloader_persistent_workers=True,
+            num_train_epochs=1,
             learning_rate=2e-5,
             max_steps=2500,
             eval_strategy="steps",
@@ -199,10 +203,4 @@ class unification_urdu_lang_model:
             compute_metrics=self._compute_metrics,
         )
 
-        train_result = trainer.train()
-
-        save_path = "../text_extraction/urdu_model/saved_model"
-        trainer.save_model(save_path)
-        self.processor.save_pretrained(save_path)
-
-        return train_result
+        return trainer.train()

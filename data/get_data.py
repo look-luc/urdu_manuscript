@@ -3,14 +3,17 @@ import os
 import urllib.request
 from typing import cast
 
-from datasets import Dataset, interleave_datasets, load_dataset
+from datasets import Dataset, interleave_datasets, load_dataset, load_from_disk
 
-CACHE_DIR = os.getenv("HF_HOME", f"/scratch/alpine/{os.getenv('USER', '')}/.cache/huggingface")
+# Path definitions matching your HPC scratch directory setup
+SCRATCH_BASE = f"/scratch/alpine/{os.getenv('USER', '')}"
+CACHE_DIR = os.getenv("HF_HOME", f"{SCRATCH_BASE}/.cache/huggingface")
+PROCESSED_DIR = os.getenv("PROCESSED_DATA_DIR", f"{SCRATCH_BASE}/processed_datasets")
 
+# Read SLURM allocated CPUs safely and cap worker count to avoid OOM
 SLURM_CPUS = os.getenv("SLURM_CPUS_PER_TASK")
 SYSTEM_CPUS = int(SLURM_CPUS) if SLURM_CPUS else (os.cpu_count() or 1)
 NUM_PROC = min(SYSTEM_CPUS, 16)
-
 MAP_BATCH_SIZE = 256
 
 
@@ -55,6 +58,16 @@ def _all_same_type(batch: dict) -> dict:
 
 
 def get_datasets(buffer_size: int = 1000):
+    train_cache_path = os.path.join(PROCESSED_DIR, "train")
+    test_cache_path = os.path.join(PROCESSED_DIR, "test")
+
+    if os.path.exists(train_cache_path) and os.path.exists(test_cache_path):
+        print(f"Loading pre-processed datasets directly from disk cache: {PROCESSED_DIR}")
+        train_dataset = load_from_disk(train_cache_path)
+        test_dataset = load_from_disk(test_cache_path)
+        return {"train": train_dataset, "test": test_dataset}
+
+    print(f"No disk cache found at '{PROCESSED_DIR}'. Running mapping pipeline...")
     map_config = {
         "function": _all_same_type,
         "batched": True,
@@ -63,7 +76,7 @@ def get_datasets(buffer_size: int = 1000):
         "num_proc": NUM_PROC,
     }
 
-    print(f"Loading arabic datasets with {NUM_PROC} workers (batch_size={MAP_BATCH_SIZE})...")
+    print("Loading arabic datasets...")
     arabic_train = cast(
         Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="train", cache_dir=CACHE_DIR),
@@ -85,16 +98,19 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("hezarai/parsynth-ocr-200k", split="test", cache_dir=CACHE_DIR),
     ).rename_column("image_path", "image").select_columns(["image", "text"]).map(**map_config)
 
-    persian_pixel = cast(
+    persian_raw = cast(
         Dataset,
         load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
+    ).select_columns(["image", "text"])
+
+    persian_pixel_test = persian_raw.select(range(100000)).map(**map_config)
+    persian_pixel_train = persian_raw.select(range(100000, len(persian_raw))).map(**map_config)
 
     print("Loading urdu datasets...")
     nastaliq_raw_train = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
+    ).select_columns(["image", "text"]).select(range(150000)).map(**map_config)
 
     nastaliq_raw_val = cast(
         Dataset,
@@ -104,7 +120,7 @@ def get_datasets(buffer_size: int = 1000):
     naskh_raw_train = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
+    ).select_columns(["image", "text"]).select(range(150000)).map(**map_config)
 
     naskh_raw_test = cast(
         Dataset,
@@ -130,6 +146,7 @@ def get_datasets(buffer_size: int = 1000):
         [nastaliq_raw_train, naskh_raw_train],
         seed=42,
     )
+
     urdu_ds_test = interleave_datasets(
         [nastaliq_raw_val, naskh_raw_test],
         seed=42,
@@ -138,7 +155,7 @@ def get_datasets(buffer_size: int = 1000):
     test_sources = [
         arabic_test,
         parsynth_test,
-        persian_pixel.take(100000),
+        persian_pixel_test,
         urdu_ds_test,
         urdu_news_test,
         urdu_news_val,
@@ -148,7 +165,7 @@ def get_datasets(buffer_size: int = 1000):
     train_sources = [
         arabic_train,
         parsynth_train,
-        persian_pixel.skip(100000),
+        persian_pixel_train,
         urdu_historical_train,
         urdu_news_train,
     ]
@@ -165,5 +182,10 @@ def get_datasets(buffer_size: int = 1000):
             buffer_size=buffer_size,
         ),
     )
+
+    print(f"Saving processed datasets to disk cache: {PROCESSED_DIR}")
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+    train_dataset.save_to_disk(train_cache_path)
+    test_dataset.save_to_disk(test_cache_path)
 
     return {"train": train_dataset, "test": test_dataset}

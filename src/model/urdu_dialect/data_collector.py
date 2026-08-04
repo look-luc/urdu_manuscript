@@ -54,10 +54,9 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            # LLaVA-NeXT base patch size is 336x336
             img_tensor = pad_to_min_dim(img_tensor, min_dim=336)
-            pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
-            images.append(pil_img)
+            # pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
+            images.append(img_tensor)
             txt_content = feature.get("text", "")
 
             user_messages = [
@@ -96,21 +95,28 @@ class Data_Collector:
             user_text_prompts.append(user_prompt_text)
             full_text_prompts.append(full_text)
 
-        user_batch = self.processor(
+        vision_batch = self.processor(
+            images=images,
+            return_tensors='pt'
+        )
+
+        user_batch = self.processor.tokenizer(
             text=user_text_prompts,
-            images=images,
             padding=True,
             return_tensors="pt",
         )
 
-        batch = self.processor(
+        batch = self.processor.tokenizer(
             text=full_text_prompts,
-            images=images,
             padding=True,
             return_tensors="pt",
         )
 
-        input_ids = batch["input_ids"]
+        final_batch = vision_batch.copy()
+        final_batch["input_ids"] = batch["input_ids"]
+        final_batch["attention_mask"] = batch["attention_mask"]
+
+        input_ids = final_batch["input_ids"]
         labels = input_ids.clone()
 
         batch_size = input_ids.size(0)
