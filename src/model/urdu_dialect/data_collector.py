@@ -2,26 +2,24 @@ import torch
 import torchvision.io as tv_io
 
 
-def pad_image_if_needed(img_tensor: torch.Tensor, min_dim: int = 56) -> torch.Tensor:
-    """Pads a [C, H, W] image tensor onto a white background if below min_dim."""
+def pad_to_square(img_tensor: torch.Tensor, min_square_dim: int = 112) -> torch.Tensor:
     c, h, w = img_tensor.shape
-    if w < min_dim or h < min_dim:
-        new_w = max(w, min_dim)
-        new_h = max(h, min_dim)
+    side_len = max(h, w, min_square_dim)
 
-        padded_tensor = torch.full(
-            (c, new_h, new_w),
-            fill_value=255,
-            dtype=img_tensor.dtype,
-            device=img_tensor.device,
-        )
+    # Allocate white canvas (255 for RGB uint8)
+    padded_tensor = torch.full(
+        (c, side_len, side_len),
+        fill_value=255,
+        dtype=img_tensor.dtype,
+        device=img_tensor.device,
+    )
 
-        top = (new_h - h) // 2
-        left = (new_w - w) // 2
+    # Center original image tensor within the square canvas
+    top = (side_len - h) // 2
+    left = (side_len - w) // 2
 
-        padded_tensor[:, top : top + h, left : left + w] = img_tensor
-        return padded_tensor
-    return img_tensor
+    padded_tensor[:, top : top + h, left : left + w] = img_tensor
+    return padded_tensor
 
 
 class Data_Collector:
@@ -52,7 +50,7 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            img_tensor = pad_image_if_needed(img_tensor, min_dim=56)
+            img_tensor = pad_to_square(img_tensor)
             images.append(img_tensor)
             txt_content = feature.get("text", "")
 
