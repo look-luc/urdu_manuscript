@@ -10,8 +10,8 @@ from torchmetrics.functional.text import bleu_score
 from torchmetrics.text import EditDistance
 from transformers import (
     AutoConfig,
+    AutoProcessor,
     LlavaNextForConditionalGeneration,
-    LlavaNextProcessor,
     Trainer,
     TrainingArguments,
 )
