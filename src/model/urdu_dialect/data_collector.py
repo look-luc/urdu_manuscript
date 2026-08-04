@@ -1,9 +1,9 @@
 import torch
 import torchvision.io as tv_io
-from torchvision.transforms.functional import to_pil_image
 
 
 def pad_image_if_needed(img_tensor: torch.Tensor, min_dim: int = 56) -> torch.Tensor:
+    """Pads a [C, H, W] image tensor onto a white background if below min_dim."""
     c, h, w = img_tensor.shape
     if w < min_dim or h < min_dim:
         new_w = max(w, min_dim)
@@ -13,7 +13,7 @@ def pad_image_if_needed(img_tensor: torch.Tensor, min_dim: int = 56) -> torch.Te
             (c, new_h, new_w),
             fill_value=255,
             dtype=img_tensor.dtype,
-            device=img_tensor.device
+            device=img_tensor.device,
         )
 
         top = (new_h - h) // 2
@@ -21,7 +21,6 @@ def pad_image_if_needed(img_tensor: torch.Tensor, min_dim: int = 56) -> torch.Te
 
         padded_tensor[:, top : top + h, left : left + w] = img_tensor
         return padded_tensor
-
     return img_tensor
 
 
@@ -53,16 +52,15 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            pil_img = to_pil_image(img_tensor)
-            pil_img = pad_image_if_needed(pil_img, min_dim=28)
-            images.append(pil_img)
+            img_tensor = pad_image_if_needed(img_tensor, min_dim=56)
+            images.append(img_tensor)
             txt_content = feature.get("text", "")
 
             user_messages = [
                 {
                     "role": "user",
                     "content": [
-                        {"type": "image", "image": pil_img},
+                        {"type": "image", "image": img_tensor},
                         {"type": "text", "text": self.prompt},
                     ],
                 }
@@ -87,7 +85,6 @@ class Data_Collector:
             user_text_prompts.append(user_prompt_text)
             full_text_prompts.append(full_text)
 
-        # Process user prompt + image to extract exact visual+text prompt lengths
         user_batch = self.processor(
             text=user_text_prompts,
             images=images,
@@ -95,7 +92,6 @@ class Data_Collector:
             return_tensors="pt",
         )
 
-        # Process full target prompt + image
         batch = self.processor(
             text=full_text_prompts,
             images=images,
