@@ -3,9 +3,12 @@ import os
 import urllib.request
 from typing import cast
 
-from datasets import Dataset, IterableDataset, interleave_datasets, load_dataset
+from datasets import Dataset, interleave_datasets, load_dataset
 
-CACHE_DIR = os.getenv("HF_HOME", "/scratch/alpine/" + os.getenv("USER", "") + "/.cache/huggingface")
+CACHE_DIR = os.getenv("HF_HOME", f"/scratch/alpine/{os.getenv('USER', '')}/.cache/huggingface")
+NUM_PROC = os.cpu_count() or 1
+
+
 def _fetch_bytes(path_or_url: str) -> bytes:
     if path_or_url.startswith(("http://", "https://")):
         req = urllib.request.Request(
@@ -18,99 +21,99 @@ def _fetch_bytes(path_or_url: str) -> bytes:
             return f.read()
 
 
-def _all_same_type(example: dict):
-    if "image" not in example:
-        raise ValueError("image is not a column of data")
-
-    feature = example["image"]
-
+def _process_single_image(feature) -> bytes:
     if isinstance(feature, bytes):
-        raw_bytes = feature
+        return feature
     elif isinstance(feature, str):
-        raw_bytes = _fetch_bytes(feature)
+        return _fetch_bytes(feature)
     elif isinstance(feature, dict):
         if feature.get("bytes") is not None:
-            raw_bytes = feature["bytes"]
+            return feature["bytes"]
         elif feature.get("path") is not None:
-            raw_bytes = _fetch_bytes(feature["path"])
+            return _fetch_bytes(feature["path"])
         else:
             raise ValueError("Dict feature missing both 'bytes' and 'path'")
     elif hasattr(feature, "save"):
         buf = io.BytesIO()
         feature.convert("RGB").save(buf, format="JPEG")
-        raw_bytes = buf.getvalue()
+        return buf.getvalue()
     else:
         raise ValueError(f"Unsupported image format: {type(feature)}")
 
-    example["image"] = raw_bytes
-    return example
+
+def _all_same_type(batch: dict) -> dict:
+    if "image" not in batch:
+        raise ValueError("image is not a column of data")
+
+    batch["image"] = [_process_single_image(img) for img in batch["image"]]
+    return batch
 
 
 def get_datasets(buffer_size: int = 1000):
     print("loading arabic")
     arabic_train = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="train", cache_dir=CACHE_DIR),
-    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
+    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     arabic_test = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="test", cache_dir=CACHE_DIR),
-    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type)
+    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
     print("finish loading arabic")
 
     print("loading persian")
     parsynth_train = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="train", cache_dir=CACHE_DIR),
-    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type)
+    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     parsynth_test = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", cache_dir=CACHE_DIR),
-    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type)
+    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     persian_pixel = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
     print("finish loading persian")
 
     print("loading urdu")
     nastaliq_raw_train = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     nastaliq_raw_val = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     naskh_raw_train = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     naskh_raw_test = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     urdu_news_train = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     urdu_news_test = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
 
     urdu_news_val = cast(
-        IterableDataset,
+        Dataset,
         load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(_all_same_type)
+    ).select_columns(["image", "text"]).map(_all_same_type, batched=True, num_proc=NUM_PROC)
     print("finish loading urdu")
 
     urdu_historical_train = interleave_datasets(
@@ -128,7 +131,7 @@ def get_datasets(buffer_size: int = 1000):
         persian_pixel.take(100000),
         urdu_ds_test,
         urdu_news_test,
-        urdu_news_val
+        urdu_news_val,
     ]
     test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
 
