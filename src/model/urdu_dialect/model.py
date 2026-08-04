@@ -11,6 +11,7 @@ from torchmetrics.text import EditDistance
 from transformers import (
     AutoConfig,
     AutoProcessor,
+    BitsAndBytesConfig,
     LlavaNextForConditionalGeneration,
     Trainer,
     TrainingArguments,
@@ -110,17 +111,25 @@ class unification_urdu_lang_model:
             torch.cuda.ipc_collect()
             torch.cuda.reset_peak_memory_stats()
 
-            torch.backends.cudnn.enabled = False
-            torch.backends.cudnn.benchmark = False
+            torch.backends.cudnn.enabled = True
+            torch.backends.cudnn.benchmark = True
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
 
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
+            llm_int8_skip_modules=False
+        )
+
         model = LlavaNextForConditionalGeneration.from_pretrained(
             self.model_id,
+            quantization_config=bnb_config,
             device_map={"": self.device},
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
+            attn_implementation="sdpa"
         )
 
         processor = AutoProcessor.from_pretrained(
