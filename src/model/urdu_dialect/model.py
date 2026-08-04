@@ -120,7 +120,6 @@ class unification_urdu_lang_model:
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,
             llm_int8_threshold=6.0,
-            llm_int8_skip_modules=False
         )
 
         model = LlavaNextForConditionalGeneration.from_pretrained(
