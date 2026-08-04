@@ -60,8 +60,9 @@ class unification_urdu_lang_model:
 
         pad_id = self.processor.tokenizer.pad_token_id
 
-        clean_pred_ids = np.where(label_ids != -100, pred_ids, pad_id)
+        # Replace -100 in labels with pad_id for standard decoding
         clean_label_ids = np.where(label_ids != -100, label_ids, pad_id)
+        clean_pred_ids = np.where(label_ids != -100, pred_ids, pad_id)
 
         decoded_preds = self.processor.tokenizer.batch_decode(
             clean_pred_ids, skip_special_tokens=True
@@ -106,9 +107,8 @@ class unification_urdu_lang_model:
             torch.cuda.ipc_collect()
             torch.cuda.reset_peak_memory_stats()
 
+            torch.backends.cudnn.enabled = False
             torch.backends.cudnn.benchmark = False
-            torch.backends.cudnn.deterministic = True
-            torch.backends.cudnn.enabled = True
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
@@ -121,7 +121,7 @@ class unification_urdu_lang_model:
         )
 
         self.min_pixels = 56 * 56
-        self.max_pixels = 512 * 28 * 28
+        self.max_pixels = 256 * 28 * 28  # Reduced to avoid vision token memory spikes
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,

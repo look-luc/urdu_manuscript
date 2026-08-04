@@ -9,33 +9,10 @@ class Data_Collector:
         self.prompt = prompt
         self.pad_token_id = self.processor.tokenizer.pad_token_id
 
-        assistant_tokens = self.processor.tokenizer.encode(
-            "<|im_start|>assistant\n", add_special_tokens=False
-        )
-        self.assistant_start_tensor = torch.tensor(
-            assistant_tokens, dtype=torch.long
-        )
-
-    def _find_subsequence(
-        self, sequence: torch.Tensor, pattern: torch.Tensor
-    ) -> int:
-        seq_len = sequence.size(0)
-        pat_len = pattern.size(0)
-
-        if pat_len > seq_len:
-            return -1
-
-        windows = sequence.unfold(0, pat_len, 1)
-        matches = (windows == pattern).all(dim=1)
-        indices = torch.nonzero(matches, as_tuple=True)[0]
-
-        if len(indices) > 0:
-            return indices[0].item()
-        return -1
-
     def __call__(self, features):
         images = []
-        text_prompts = []
+        full_text_prompts = []
+        user_prompt_lengths = []
 
         for feature in features:
             img_raw = feature["image"]
@@ -58,29 +35,40 @@ class Data_Collector:
             images.append(pil_img)
             txt_content = feature.get("text", "")
 
-            messages = [
+            user_messages = [
                 {
                     "role": "user",
                     "content": [
                         {"type": "image", "image": pil_img},
                         {"type": "text", "text": self.prompt},
                     ],
-                },
+                }
+            ]
+
+            full_messages = user_messages + [
                 {
                     "role": "assistant",
                     "content": [
                         {"type": "text", "text": txt_content},
                     ],
-                },
+                }
             ]
 
-            formatted_text = self.processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=False
+            # Format user prompt to get exact prompt token length
+            user_prompt_text = self.processor.apply_chat_template(
+                user_messages, tokenize=False, add_generation_prompt=True
             )
-            text_prompts.append(formatted_text)
+            full_text = self.processor.apply_chat_template(
+                full_messages, tokenize=False, add_generation_prompt=False
+            )
+
+            # Measure prompt length in tokens
+            prompt_token_ids = self.processor.tokenizer.encode(user_prompt_text)
+            user_prompt_lengths.append(len(prompt_token_ids))
+            full_text_prompts.append(full_text)
 
         batch = self.processor(
-            text=text_prompts,
+            text=full_text_prompts,
             images=images,
             padding=True,
             return_tensors="pt",
@@ -88,18 +76,10 @@ class Data_Collector:
 
         input_ids = batch["input_ids"]
         labels = input_ids.clone()
-        pattern_len = self.assistant_start_tensor.size(0)
 
-        for i in range(len(features)):
-            row_labels = labels[i]
-            match_idx = self._find_subsequence(
-                row_labels, self.assistant_start_tensor
-            )
-
-            if match_idx != -1:
-                labels[i, : match_idx + pattern_len] = -100
-            else:
-                labels[i, :] = -100
+        # Mask prompt tokens and padding tokens explicitly
+        for i, prompt_len in enumerate(user_prompt_lengths):
+            labels[i, :prompt_len] = -100
 
         labels[labels == self.pad_token_id] = -100
         batch["labels"] = labels
