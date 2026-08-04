@@ -10,8 +10,8 @@ from torchmetrics.functional.text import bleu_score
 from torchmetrics.text import EditDistance
 from transformers import (
     AutoConfig,
+    AutoModel,
     AutoProcessor,
-    Qwen2_5_VLForConditionalGeneration,
     Trainer,
     TrainingArguments,
 )
@@ -32,7 +32,7 @@ f1_metric = EditDistance()
 class unification_urdu_lang_model:
     def __init__(
         self,
-        model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+        model_id: str = "OpenGVLab/InternVL2-8B",
         prompt: str = """
             You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
@@ -58,9 +58,12 @@ class unification_urdu_lang_model:
         if pred_ids.ndim == 3:
             pred_ids = np.argmax(pred_ids, axis=-1)
 
-        pad_id = self.processor.tokenizer.pad_token_id
+        pad_id = (
+            self.processor.tokenizer.pad_token_id
+            if self.processor.tokenizer.pad_token_id is not None
+            else self.processor.tokenizer.eos_token_id
+        )
 
-        # Replace -100 in labels with pad_id for standard decoding
         clean_label_ids = np.where(label_ids != -100, label_ids, pad_id)
         clean_pred_ids = np.where(label_ids != -100, pred_ids, pad_id)
 
@@ -110,23 +113,24 @@ class unification_urdu_lang_model:
             torch.backends.cudnn.enabled = False
             torch.backends.cudnn.benchmark = False
 
-        config = AutoConfig.from_pretrained(self.model_id)
+        config = AutoConfig.from_pretrained(
+            self.model_id, trust_remote_code=True
+        )
         config.use_cache = False
 
-        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        model = AutoModel.from_pretrained(
             self.model_id,
-            device_map={"": self.device},
-            attn_implementation="sdpa",
             torch_dtype=torch.bfloat16,
+            load_in_8bit=True,
+            low_cpu_mem_usage=True,
+            use_flash_attn=True,
+            trust_remote_code=True,
+            device_map={"": self.device},
         )
-
-        self.min_pixels = 28 * 28 * 4
-        self.max_pixels = 256 * 28 * 28  # Reduced to avoid vision token memory spikes
 
         processor = AutoProcessor.from_pretrained(
             self.model_id,
-            min_pixels=self.min_pixels,
-            max_pixels=self.max_pixels,
+            trust_remote_code=True,
         )
 
         peft_config = LoraConfig(
@@ -140,6 +144,8 @@ class unification_urdu_lang_model:
                 "gate_proj",
                 "up_proj",
                 "down_proj",
+                "wqkv",
+                "wo",
             ],
             lora_dropout=0.05,
             bias="none",

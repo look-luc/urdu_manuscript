@@ -3,7 +3,7 @@ import torchvision.io as tv_io
 import torchvision.transforms.functional as F
 
 
-def pad_to_min_dim(img_tensor: torch.Tensor, min_dim: int = 56) -> torch.Tensor:
+def pad_to_min_dim(img_tensor: torch.Tensor, min_dim: int = 448) -> torch.Tensor:
     c, h, w = img_tensor.shape
     new_h = max(h, min_dim)
     new_w = max(w, min_dim)
@@ -26,7 +26,11 @@ class Data_Collector:
     def __init__(self, processor, prompt: str = ""):
         self.processor = processor
         self.prompt = prompt
-        self.pad_token_id = self.processor.tokenizer.pad_token_id
+        self.pad_token_id = (
+            self.processor.tokenizer.pad_token_id
+            if self.processor.tokenizer.pad_token_id is not None
+            else self.processor.tokenizer.eos_token_id
+        )
 
     def __call__(self, features):
         images = []
@@ -50,7 +54,7 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            img_tensor = pad_to_min_dim(img_tensor, min_dim=56)
+            img_tensor = pad_to_min_dim(img_tensor, min_dim=448)
             pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
             images.append(pil_img)
             txt_content = feature.get("text", "")
