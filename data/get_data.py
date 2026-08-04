@@ -2,7 +2,7 @@ import io
 import urllib.request
 from typing import cast
 
-from datasets import IterableDataset, interleave_datasets, load_dataset
+from datasets import Dataset, IterableDataset, interleave_datasets, load_dataset
 
 
 def _fetch_bytes(path_or_url: str) -> bytes:
@@ -127,7 +127,7 @@ def get_datasets(buffer_size: int = 1000):
         persian_pixel.take(100000),
         urdu_ds_test,
     ]
-    test_dataset = cast(IterableDataset, interleave_datasets(test_sources, seed=42))
+    test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
 
     train_sources = [
         arabic_train,
@@ -136,7 +136,7 @@ def get_datasets(buffer_size: int = 1000):
         urdu_ds_train,
     ]
     train_dataset = cast(
-        IterableDataset,
+        Dataset,
         interleave_datasets(
             datasets=train_sources,
             probabilities=[0.15, 0.175, 0.175, 0.50],

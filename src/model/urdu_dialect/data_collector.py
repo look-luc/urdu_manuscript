@@ -3,7 +3,7 @@ import torchvision.io as tv_io
 import torchvision.transforms.functional as F
 
 
-def pad_to_square(img_tensor: torch.Tensor, min_square_dim: int = 112) -> torch.Tensor:
+def pad_to_square(img_tensor: torch.Tensor, min_square_dim: int = 56) -> torch.Tensor:
     c, h, w = img_tensor.shape
     side_len = max(h, w, min_square_dim)
 
@@ -52,7 +52,7 @@ class Data_Collector:
                 )
 
             img_tensor = pad_to_square(img_tensor)
-            pil_img = F.to_pil_image(img_tensor.cpu())
+            pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
             images.append(pil_img)
             txt_content = feature.get("text", "")
 
