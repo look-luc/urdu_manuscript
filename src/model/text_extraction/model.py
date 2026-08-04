@@ -1,31 +1,22 @@
+from pathlib import Path
+
 import torch
-from qwen_vl_utils import process_vision_info
-from torchvision import io
+import torchvision.io as tv_io
+from peft import PeftModel
 from torchvision.transforms.functional import to_pil_image
 from transformers import (
+    AutoModelForImageTextToText,
     AutoProcessor,
-    Qwen2VLForConditionalGeneration,
 )
 
-
+script_path = root_dir = Path(__file__).resolve().parent
 class text_extraction:
     def __init__(
         self,
-        model_id: str = "Qwen/Qwen2-VL-7B-Instruct",
-        prompt: str = """
-            You are a automated OCR engine operating under strict structural constraints.
-            Extract the historical Urdu Nastaliq script exactly as it appears in the image.
-
-            CRITICAL OUTPUT FORMATTING RULES:
-            1. Output ONLY the raw extracted text wrapped inside <text> and </text> tags.
-            2. Do NOT write any introductory or concluding remarks (e.g., do NOT write "Sure, here is the transcription").
-            3. Do NOT wrap the output in markdown code blocks (```).
-            4. Maintain line-by-line formatting matching the manuscript layout.
-
-            TRANSCRIPTION RULES:
-            1. Retain archaic Dakhni vocabulary elements (e.g., 'کوں', 'ہور') exactly as written.
-            2. If a page contains a header or a page number, extract it on its own line at the top.
+        model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
+        prompt: str = """"You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.\nAnalyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.\nOutput ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription."
             """,
+            path_to_model:str=f"{script_path}/urdu_model"
     ) -> None:
         torch.backends.cudnn.enabled = False
 
@@ -33,73 +24,67 @@ class text_extraction:
         self.prompt = prompt
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
+        self.path_to_model = path_to_model
         self.model, self.processor = self._setup_model()
 
     def _setup_model(self):
-        model = Qwen2VLForConditionalGeneration.from_pretrained(
+        model = AutoModelForImageTextToText.from_pretrained(
             self.model_id,
             torch_dtype=torch.bfloat16,
             device_map="auto",
             trust_remote_code=True,
         )
+
+        peft_model = PeftModel.from_pretrained(model, self.path_to_model)
+        peft_model = peft_model.merge_and_unload()
+
         processor = AutoProcessor.from_pretrained(self.model_id)
-        return model, processor
 
-    def extract(self, image_path: str, decoding_strategy: str = "greedy"):
-        pytorch_image_read = io.read_image(image_path)
-        image_tensor = to_pil_image(pytorch_image_read).convert("RGB")
+        processor.image_processor.min_pixels=128 * 128
+        processor.image_processor.max_pixels=200 * 200
 
-        max_tokens = 2000
+        return peft_model, processor
 
-        message = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "image": image_tensor,
-                        "min_pixels": 512 * 512,
-                        "max_pixels": 14 * 14 * 1024 * 1024
-                    },
-                    {"type": "text", "text": self.prompt}
-                ]
-            }
-        ]
+    def extract(self, pth_to_img: str):
+        self.model.eval()
 
-        text = self.processor.apply_chat_template(message, tokenize=False, add_generation_prompt=True)
-        image_inputs, video_inputs = process_vision_info(message)
+        message_text = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt}
+                    ]
+                }
+            ]
+        text = self.processor.apply_chat_template(
+            message_text, tokenize=False, add_generation_prompt=True
+        )
+        image_tensor = tv_io.read_image(
+            pth_to_img, mode=tv_io.ImageReadMode.RGB
+        )
+        image_tensor = to_pil_image(image_tensor)
 
         inputs = self.processor(
-            text=[text],
-            images=image_inputs,
-            videos=None,
-            padding=True,
-            return_tensors="pt"
+            images=image_tensor,
+            text=text,
+            return_tensors = "pt"
         ).to(self.device)
 
-        if decoding_strategy == "beam_search":
-            gen_config = {
-                "do_sample": False,
-                "num_beams": 3,
-                "repetition_penalty": 1.0,
-                "no_repeat_ngram_size": 0,
-            }
-        else:
-            gen_config = {
-                "do_sample": False,
-                "repetition_penalty": 1.0,
-                "no_repeat_ngram_size": 0,
-            }
-
         with torch.no_grad():
-            generated_ids = self.model.generate(
+            ids = self.model.generate(
                 **inputs,
-                max_new_tokens=max_tokens,
-                **gen_config
+                max_new_tokens=2000,
+                repetition_penalty=1.15,
             )
 
-        gen_id_trimmed = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
-        output_text = self.processor.batch_decode(gen_id_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+        generated_ids_trimmed = [
+            out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, ids)
+        ]
 
-        final_text = output_text[0].split("[END]")[0]
-        return final_text
+        decoded_output = self.processor.batch_decode(
+            generated_ids_trimmed,
+            skip_special_tokens=True,
+        )
+
+        return decoded_output[0]

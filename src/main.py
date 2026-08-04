@@ -1,12 +1,15 @@
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 from src.model.text_extraction.model import text_extraction
+from src.model.urdu_dialect.graphs import metrics_graph
 from src.model.urdu_dialect.model import unification_urdu_lang_model
+from src.test import run_diagnostics
 
 load_dotenv()
-# os.environ["HF_TOKEN"] = os.getenv("HUGGING_FACE_TOKEN")
+hf_token = os.getenv("HF_TOKEN")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -14,16 +17,16 @@ DATA_PATH = SCRIPT_DIR.parent / "data"
 
 def run_model(what_model:str):
     if what_model == "text_extraction":
-        right_side_model = text_extraction().extract(str(DATA_PATH/"page_10_original_manuscript_old_urdu.jpeg"), "greedy")
-        left_side_model = text_extraction().extract(str(DATA_PATH/"page_11_original_manuscript_old_urdu.jpg"), "greedy")
+        pg10 = text_extraction().extract(str(DATA_PATH/"eval_data/pg10.png"))
+        pg11 = text_extraction().extract(str(DATA_PATH/"eval_data/pg11.png"))
 
         output_dir = Path("./model/text_extraction_output")
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / "model_out.txt", "w", encoding="utf-8") as file:
-            file.write("Page 10 (right page)\n")
-            file.write(right_side_model)
-            file.write("\n\nPage 11 (left page)\n")
-            file.write(left_side_model)
+            file.write("Page 10\n")
+            file.write(pg10)
+            file.write("\n\nPage 11\n")
+            file.write(pg11)
         print(f"Finished, model_out.txt is located in {output_dir}")
     elif what_model == "urdu_dialect":
         try:
@@ -38,5 +41,9 @@ def run_model(what_model:str):
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / "model_out.txt", "w", encoding="utf-8") as file:
             file.write(save_status)
+    elif what_model == "graph":
+        metrics_graph()
+    elif what_model == "diagnostic":
+        run_diagnostics()
     else:
         raise ValueError(f"{what_model} is not a valid model run type.")

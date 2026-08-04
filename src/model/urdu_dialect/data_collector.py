@@ -1,55 +1,130 @@
 import torch
+import torchvision.io as tv_io
+import torchvision.transforms.functional as F
+
+
+def pad_to_min_dim(img_tensor: torch.Tensor, min_dim: int = 336) -> torch.Tensor:
+    c, h, w = img_tensor.shape
+    new_h = max(h, min_dim)
+    new_w = max(w, min_dim)
+
+    padded_tensor = torch.full(
+        (c, new_h, new_w),
+        fill_value=255,
+        dtype=img_tensor.dtype,
+        device=img_tensor.device,
+    )
+
+    top = (new_h - h) // 2
+    left = (new_w - w) // 2
+
+    padded_tensor[:, top : top + h, left : left + w] = img_tensor
+    return padded_tensor
 
 
 class Data_Collector:
-    def __init__(self, processor):
+    def __init__(self, processor, prompt: str = ""):
         self.processor = processor
-        self.pad_token_id = self.processor.tokenizer.pad_token_id
-        self.assistant_start_token = self.processor.tokenizer.encode("<|im_start|>assistant\n", add_special_tokens=False)
-
-    def __call__(self, features):# features is a list of dicts returned by the dataset's _process function
-        # Separates the text tensors from visual features
-        input_ids_list = [feature["input_ids"] for feature in features]
-        attention_mask_list = [feature["attention_mask"] for feature in features]
-
-        # Extracts the visual features safely
-        pixel_values = [feature["pixel_values"] for feature in features]
-        image_grid_thw = [feature["image_grid_thw"] for feature in features]
-
-        # Dynamic Padding
-        # Pad the text tensors so they are all uniform length across this batch
-        padded_inputs = self.processor.tokenizer.pad(
-            {
-                "input_ids": input_ids_list,
-                "attention_mask": attention_mask_list
-            },
-            padding=True,
-            return_tensors="pt"
+        self.prompt = prompt
+        self.pad_token_id = (
+            self.processor.tokenizer.pad_token_id
+            if self.processor.tokenizer.pad_token_id is not None
+            else self.processor.tokenizer.eos_token_id
         )
 
-        input_ids = padded_inputs["input_ids"] # the ids for the inputs after being padded
-        attention_mask = padded_inputs["attention_mask"] # attention masks after being padded
+    def __call__(self, features):
+        images = []
+        full_text_prompts = []
+        user_text_prompts = []
 
-        # Create a copy of input_ids to act as your target labels
+        for feature in features:
+            img_raw = feature["image"]
+
+            if isinstance(img_raw, bytes):
+                byte_buffer = torch.frombuffer(
+                    bytearray(img_raw), dtype=torch.uint8
+                )
+                img_tensor = tv_io.decode_image(
+                    byte_buffer, mode=tv_io.ImageReadMode.RGB
+                )
+            elif isinstance(img_raw, torch.Tensor):
+                img_tensor = img_raw
+            else:
+                raise ValueError(
+                    f"Unsupported image format in collator: {type(img_raw)}"
+                )
+
+            img_tensor = pad_to_min_dim(img_tensor, min_dim=336)
+            # pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
+            images.append(img_tensor)
+            txt_content = feature.get("text", "")
+
+            user_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                }
+            ]
+
+            full_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": self.prompt},
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": txt_content},
+                    ],
+                },
+            ]
+
+            user_prompt_text = self.processor.apply_chat_template(
+                user_messages, add_generation_prompt=True
+            )
+            full_text = self.processor.apply_chat_template(
+                full_messages, add_generation_prompt=False
+            )
+
+            user_text_prompts.append(user_prompt_text)
+            full_text_prompts.append(full_text)
+
+        vision_batch = self.processor(
+            images=images,
+            return_tensors='pt'
+        )
+
+        user_batch = self.processor.tokenizer(
+            text=user_text_prompts,
+            padding=True,
+            return_tensors="pt",
+        )
+
+        batch = self.processor.tokenizer(
+            text=full_text_prompts,
+            padding=True,
+            return_tensors="pt",
+        )
+
+        final_batch = vision_batch.copy()
+        final_batch["input_ids"] = batch["input_ids"]
+        final_batch["attention_mask"] = batch["attention_mask"]
+
+        input_ids = final_batch["input_ids"]
         labels = input_ids.clone()
 
-        # going row by row
-        for i in range(len(features)):
-            row_labels = labels[i]
+        batch_size = input_ids.size(0)
+        for i in range(batch_size):
+            prompt_len = user_batch["attention_mask"][i].sum().item()
+            labels[i, :prompt_len] = -100
 
-            for row in range(len(row_labels)-len(self.assistant_start_token)+1):
-                # determining if window of size current row to the current row + how ever long the assistant start token is
-                if row_labels[row:row+len(self.assistant_start_token)].tolist() == self.assistant_start_token:
-                    labels[i, :row+len(self.assistant_start_token)] = -100 #will assign the range to the value specified; labels is a torch tensor not a list
-                    break
-
-        # Collate everything into a dictionary matching the model forward pass signatures
-        batch = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-            "pixel_values": torch.cat(pixel_values, dim=0),
-            "image_grid_thw": torch.cat(image_grid_thw, dim=0)
-        }
+        labels[labels == self.pad_token_id] = -100
+        batch["labels"] = labels
 
         return batch

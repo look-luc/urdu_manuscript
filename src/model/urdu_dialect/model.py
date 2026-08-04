@@ -1,234 +1,205 @@
+import gc
+import os
 import sys
 from pathlib import Path
 
 import evaluate
 import numpy as np
 import torch
-from datasets import concatenate_datasets
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
+from torchmetrics.text import EditDistance
 from transformers import (
+    AutoConfig,
     AutoProcessor,
     BitsAndBytesConfig,
-    Qwen2_5_VLForConditionalGeneration,
+    LlavaNextForConditionalGeneration,
     Trainer,
     TrainingArguments,
 )
-
-from data import get_data
-
-from .data_collector import Data_Collector
 
 root_dir = Path(__file__).resolve().parents[3]
 if str(root_dir) not in sys.path:
     sys.path.append(str(root_dir))
 
+from data.get_data import get_datasets
+
+from .data_collector import Data_Collector
+
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
+f1_metric = EditDistance()
+
+ALLOCATED_CPU =  os.environ.get('SLURM_CPUS_PER_TASK')
 
 class unification_urdu_lang_model:
     def __init__(
         self,
-        model_id:str="Qwen/Qwen2.5-VL-7B-Instruct",
-        prompt:str="""
-            You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.
-            Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
+        model_id: str = "llava-hf/llama3-llava-next-8b-hf",
+        prompt: str = """
+            You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
             Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
-        """
-    )->None:
-        torch.backends.cudnn.enabled = False
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        """,
+        batch_size: int = 64,
+    ) -> None:
+        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        torch.device(self.device)
 
-        self.model_id=model_id
+        self.model_id = model_id
+        self.prompt = prompt
+        self.batch_size = batch_size
+
         self.model, self.processor, self.data = self._setup()
 
-        self.prompt = prompt
-
     def _compute_metrics(self, eval_pred):
-        logits, label_ids = eval_pred.predictions
+        pred_ids = eval_pred.predictions
+        label_ids = eval_pred.label_ids
 
-        # Converts raw logits into the most likely Token IDs
-        # logits shape: (batch_size, sequence_length, vocab_size)
-        pred_ids = np.argmax(logits, axis=-1)
+        if isinstance(pred_ids, tuple):
+            pred_ids = pred_ids[0]
 
-        decoded_preds = []
-        decoded_labels = []
+        if pred_ids.ndim == 3:
+            pred_ids = np.argmax(pred_ids, axis=-1)
 
-        shift_logits = logits[:, :-1, :]
-        shift_labels = label_ids[:, 1:]
-
-        pred_ids = np.argmax(shift_logits, axis=-1)
-        # Clean and decode row by row
-        for i in range(len(label_ids)):
-            # Isolates the text the assistant was supposed to output (ignoring -100)
-            valid_indices = shift_labels[i] != -100
-
-            row_label_ids = shift_labels[i][valid_indices]
-            row_pred_ids = pred_ids[i][valid_indices]
-
-            # Convert token IDs back to human-readable strings using the processor
-            pred_text = self.processor.tokenizer.decode(row_pred_ids, skip_special_tokens=True)
-            label_text = self.processor.tokenizer.decode(row_label_ids, skip_special_tokens=True)
-
-            decoded_preds.append(pred_text)
-            decoded_labels.append(label_text)
-
-        # Metric Comparison Loop
-        tp, fp, fn = 0, 0, 0
-        for pred, target in zip(decoded_preds, decoded_labels):
-            p_arr = np.array(pred.split())
-            t_arr = np.array(target.split())
-
-            unique_tokens = np.union1d(p_arr, t_arr)
-
-            for token in unique_tokens:
-                pred_count = np.sum(p_arr == token)
-                target_count = np.sum(t_arr == token)
-
-                tp += min(pred_count, target_count)
-
-                fp += max(0, pred_count - target_count)
-                fn += max(0, target_count - pred_count)
-
-        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-
-        f1_score = (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-
-        targets = [[label] for label in decoded_labels]
-        bleu_score_ocr = bleu_score(decoded_preds, targets, n_gram=4)
-
-        cer_score = cer_metric.compute(predictions=decoded_preds, references=decoded_labels)
-        wer_score = wer_metric.compute(predictions=decoded_preds, references=decoded_labels)
-
-        return {
-            "F1": f1_score,
-            "BLEU score": bleu_score_ocr,
-            "CER score": cer_score,
-            "WER score": wer_score
-        }
-
-    def _setup (self):
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_quant_type="nf4"
+        pad_id = (
+            self.processor.tokenizer.pad_token_id
+            if self.processor.tokenizer.pad_token_id is not None
+            else self.processor.tokenizer.eos_token_id
         )
-        model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            self.model_id,
-            torch_dtype=torch.bfloat16,
-            quantization_config=quantization_config,
-            attn_implementation="sdpa"
+
+        clean_label_ids = np.where(label_ids != -100, label_ids, pad_id)
+        clean_pred_ids = np.where(label_ids != -100, pred_ids, pad_id)
+
+        decoded_preds = self.processor.tokenizer.batch_decode(
+            clean_pred_ids, skip_special_tokens=True
         )
-        processor = AutoProcessor.from_pretrained(self.model_id, min_pixels=256*256, max_pixels=512*512)
+        decoded_labels = self.processor.tokenizer.batch_decode(
+            clean_label_ids, skip_special_tokens=True
+        )
 
-        data = get_data.get_datasets()
-
-        return  model, processor, data
-
-    def _process(self, example):
-        # Use local variables instead of self.image to prevent race conditions
-        image = example["image"]
-        text = example["text"]
-
-        message = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "image": image,
-                        "min_pixels": 512 * 512,
-                        "max_pixels": 14 * 14 * 1024 * 1024
-                    },
-                    {
-                        "type": "text",
-                        "text": self.prompt
-                    }
-                ]
-            },
-            {
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": text
-                    }
-                ]
-            }
+        decoded_preds = [
+            pred.strip() if pred.strip() else " " for pred in decoded_preds
+        ]
+        decoded_labels = [
+            label.strip() if label.strip() else " " for label in decoded_labels
         ]
 
-        text_prompt = self.processor.apply_chat_template(
-            message,
-            tokenize=False,
-            return_assistant_tokens_mask=True,
-            add_generation_prompt=False
+        cer_score = cer_metric.compute(
+            predictions=decoded_preds, references=decoded_labels
+        )
+        wer_score = wer_metric.compute(
+            predictions=decoded_preds, references=decoded_labels
         )
 
-        inputs = self.processor(
-            text=[text_prompt],
-            images=[image],
-            padding=False,
-            return_tensors='pt'
+        bleu_targets = [[label] for label in decoded_labels]
+
+        f1_metric.update(decoded_preds, decoded_labels)
+        f1_score = f1_metric.compute()
+        f1_metric.reset()
+
+        try:
+            bleu_score_val = bleu_score(decoded_preds, bleu_targets).item()
+        except Exception:
+            bleu_score_val = 0.0
+
+        return {"F1": f1_score, "CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
+
+    def _setup(self):
+        if self.device != "cuda":
+            raise ValueError("CUDA device not detected")
+        if self.device == "cuda":
+            gc.collect()
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
+            torch.cuda.reset_peak_memory_stats()
+
+            torch.backends.cudnn.enabled = True
+            torch.backends.cudnn.benchmark = True
+
+        config = AutoConfig.from_pretrained(self.model_id)
+        config.use_cache = False
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_8bit=True,
+            llm_int8_threshold=6.0,
         )
 
-        return {
-            "input_ids": inputs["input_ids"][0],
-            "attention_mask": inputs["attention_mask"][0],
-            "pixel_values": inputs["pixel_values"],
-            "image_grid_thw": inputs["image_grid_thw"]
-        }
+        model = LlavaNextForConditionalGeneration.from_pretrained(
+            self.model_id,
+            quantization_config=bnb_config,
+            device_map={"": self.device},
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
+            attn_implementation="sdpa"
+        )
 
-    def train(self):
-        self.max_tokens = 2000
-
-        train_dataset = self.data["train"]
-        test_dataset = self.data["test"]
-
-        # 2. Map the processing function to the entire interleaved stream
-        # This is now lazy and happens on-the-fly during training
-        processed_train = train_dataset.map(self._process)
-        processed_test = test_dataset.map(self._process)
-
-        data_collector = Data_Collector(processor=self.processor)
+        processor = AutoProcessor.from_pretrained(
+            self.model_id,
+            trust_remote_code=True,
+        )
 
         peft_config = LoraConfig(
             r=16,
             lora_alpha=32,
-            target_modules=["q_proj", "v_proj", "k_proj", "o_proj"],
+            target_modules=[
+                "q_proj",
+                "k_proj",
+                "v_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+                "wqkv",
+                "wo",
+            ],
             lora_dropout=0.05,
             bias="none",
-            task_type="CAUSAL_LM"
+            task_type="CAUSAL_LM",
         )
 
-        self.model = get_peft_model(self.model, peft_config) #type: ignore
+        model = get_peft_model(model, peft_config)
+        model.enable_input_require_grads()
+        model.print_trainable_parameters()
+
+        data = get_datasets()
+
+        return model, processor, data
+
+    def train(self):
+        train_dataset = self.data["train"]
+        test_dataset = self.data["test"]
 
         training_args = TrainingArguments(
             output_dir="./results",
-            ignore_data_skip=True,
             per_device_train_batch_size=1,
-            gradient_accumulation_steps=4,
+            per_device_eval_batch_size=1,
+            gradient_accumulation_steps=int(ALLOCATED_CPU) if ALLOCATED_CPU is not None else 8,
+            dataloader_pin_memory=True,
+            dataloader_prefetch_factor=2,
             gradient_checkpointing=True,
-            bf16=True,
-            optim="adamw_torch_fused",
-            remove_unused_columns=False,
+            dataloader_num_workers=4,
+            dataloader_persistent_workers=True,
+            num_train_epochs=1,
             learning_rate=2e-5,
-            logging_steps=10,
-            max_steps=5000,
+            max_steps=2500,
             eval_strategy="steps",
-            eval_steps=100,
-            save_strategy="steps",
-            save_steps=200,
-            dataloader_num_workers=0,
-            dataloader_pin_memory=False,
+            eval_steps=500,
+            bf16=True,
+            remove_unused_columns=False,
+            max_grad_norm=1.0,
+            warmup_steps=125,
+            lr_scheduler_type="cosine",
         )
 
         trainer = Trainer(
             model=self.model,
             args=training_args,
-            train_dataset=processed_train,
-            eval_dataset=processed_test,
-            data_collator=data_collector,
+            train_dataset=train_dataset,
+            eval_dataset=test_dataset,
+            data_collator=Data_Collector(
+                self.processor,
+                prompt=self.prompt,
+            ),
             compute_metrics=self._compute_metrics,
         )
 
