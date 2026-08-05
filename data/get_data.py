@@ -5,12 +5,10 @@ from typing import cast
 
 from datasets import Dataset, interleave_datasets, load_dataset, load_from_disk
 
-# Path definitions matching your HPC scratch directory setup
 SCRATCH_BASE = f"/scratch/alpine/{os.getenv('USER', '')}"
 CACHE_DIR = os.getenv("HF_HOME", f"{SCRATCH_BASE}/.cache/huggingface")
 PROCESSED_DIR = os.getenv("PROCESSED_DATA_DIR", f"{SCRATCH_BASE}/processed_datasets")
 
-# Read SLURM allocated CPUs safely and cap worker count to avoid OOM
 SLURM_CPUS = os.getenv("SLURM_CPUS_PER_TASK")
 SYSTEM_CPUS = int(SLURM_CPUS) if SLURM_CPUS else (os.cpu_count() or 1)
 NUM_PROC = min(SYSTEM_CPUS, 16)
@@ -77,15 +75,27 @@ def get_datasets(buffer_size: int = 1000):
     }
 
     print("Loading arabic datasets...")
-    arabic_train = cast(
+    arabic_raw_train = cast(
         Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="train", cache_dir=CACHE_DIR),
-    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(**map_config)
+    )
+    arabic_train = (
+        arabic_raw_train.select(range(min(15000, len(arabic_raw_train))))
+        .rename_column("markdown", "text")
+        .select_columns(["image", "text"])
+        .map(**map_config)
+    )
 
-    arabic_test = cast(
+    arabic_raw_test = cast(
         Dataset,
         load_dataset("MohamedRashad/arabic-img2md", split="test", cache_dir=CACHE_DIR),
-    ).rename_column("markdown", "text").select_columns(["image", "text"]).map(**map_config)
+    )
+    arabic_test = (
+        arabic_raw_test.select(range(min(3000, len(arabic_raw_test))))
+        .rename_column("markdown", "text")
+        .select_columns(["image", "text"])
+        .map(**map_config)
+    )
 
     print("Loading persian datasets...")
     parsynth_train = cast(
@@ -103,8 +113,8 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"])
 
-    persian_pixel_test = persian_raw.select(range(100000)).map(**map_config)
-    persian_pixel_train = persian_raw.select(range(100000, len(persian_raw))).map(**map_config)
+    persian_pixel_test = persian_raw.select(range(10000)).map(**map_config)
+    persian_pixel_train = persian_raw.select(range(10000, 35000)).map(**map_config)
 
     print("Loading urdu datasets...")
     nastaliq_raw_train = cast(
@@ -117,48 +127,11 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"]).map(**map_config)
 
-    naskh_raw_train = cast(
-        Dataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).select(range(150000)).map(**map_config)
-
-    naskh_raw_test = cast(
-        Dataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="naskh", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
-
-    urdu_news_train = cast(
-        Dataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
-
-    urdu_news_test = cast(
-        Dataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="test", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
-
-    urdu_news_val = cast(
-        Dataset,
-        load_dataset("oddadmix/qari-0.2.2-news-dataset-large", split="validation", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
-
-    urdu_historical_train = interleave_datasets(
-        [nastaliq_raw_train, naskh_raw_train],
-        seed=42,
-    )
-
-    urdu_ds_test = interleave_datasets(
-        [nastaliq_raw_val, naskh_raw_test],
-        seed=42,
-    )
-
     test_sources = [
         arabic_test,
         parsynth_test,
         persian_pixel_test,
-        urdu_ds_test,
-        urdu_news_test,
-        urdu_news_val,
+        nastaliq_raw_val,
     ]
     test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
 
@@ -166,15 +139,14 @@ def get_datasets(buffer_size: int = 1000):
         arabic_train,
         parsynth_train,
         persian_pixel_train,
-        urdu_historical_train,
-        urdu_news_train,
+        nastaliq_raw_train,
     ]
 
     train_dataset = cast(
         Dataset,
         interleave_datasets(
             datasets=train_sources,
-            probabilities=[0.20, 0.15, 0.15, 0.40, 0.10],
+            probabilities=[0.15, 0.20, 0.15, 0.50],
             stopping_strategy="all_exhausted",
             seed=42,
         ).shuffle(
