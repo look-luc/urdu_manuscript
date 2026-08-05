@@ -49,7 +49,7 @@ class Data_Collector:
                 )
             elif isinstance(img_raw, torch.Tensor):
                 img_tensor = img_raw
-            elif type(img_raw).__name__ == 'Image':
+            elif hasattr(img_raw, "convert"):
                 img_tensor = F.pil_to_tensor(img_raw.convert("RGB"))
             else:
                 raise ValueError(
