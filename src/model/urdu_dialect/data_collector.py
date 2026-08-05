@@ -49,13 +49,14 @@ class Data_Collector:
                 )
             elif isinstance(img_raw, torch.Tensor):
                 img_tensor = img_raw
+            elif type(img_raw).__name__ == 'Image':
+                img_tensor = F.pil_to_tensor(img_raw.convert("RGB"))
             else:
                 raise ValueError(
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
             img_tensor = pad_to_min_dim(img_tensor, min_dim=336)
-            # pil_img = F.to_pil_image(img_tensor.cpu()).convert("RGB")
             images.append(img_tensor)
             txt_content = feature.get("text", "")
 
@@ -97,7 +98,7 @@ class Data_Collector:
 
         vision_batch = self.processor(
             images=images,
-            return_tensors='pt'
+            return_tensors="pt"
         )
 
         user_batch = self.processor.tokenizer(
