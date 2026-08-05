@@ -151,7 +151,6 @@ def get_datasets(buffer_size: int = 1000):
             seed=42,
         ).shuffle(
             seed=42,
-            buffer_size=buffer_size,
         ),
     )
 
