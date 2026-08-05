@@ -165,7 +165,7 @@ class unification_urdu_lang_model:
 
         return model, processor, data
 
-    def train(self):
+    def train(self, output_dir: str = "./model/urdu_manuscript_model"):
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
@@ -203,4 +203,8 @@ class unification_urdu_lang_model:
             compute_metrics=self._compute_metrics,
         )
 
-        return trainer.train()
+        train_result = trainer.train()
+        trainer.save_model(output_dir)
+        self.processor.save_pretrained(output_dir)
+
+        return train_result

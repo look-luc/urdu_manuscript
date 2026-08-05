@@ -5,10 +5,6 @@ import torch
 
 from src.main import run_model
 
-
-def run(model_type:str):
-    pass
-
 if __name__ == "__main__":
     gc.collect()
     torch.cuda.empty_cache()
