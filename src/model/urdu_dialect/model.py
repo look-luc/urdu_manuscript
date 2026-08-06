@@ -132,7 +132,7 @@ class unification_urdu_lang_model:
             device_map={"": self.device},
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            attn_implementation="flash_attention_2"
+            attn_implementation="sdpa"
         )
 
         processor = AutoProcessor.from_pretrained(
