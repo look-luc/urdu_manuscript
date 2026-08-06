@@ -123,7 +123,6 @@ class unification_urdu_lang_model:
         if hasattr(processor.image_processor, "max_image_tiles"):
             processor.image_processor.max_image_tiles = 2
 
-        # Optimized LoRA config: lora_alpha=64 provides better gradient scaling
         peft_config = LoraConfig(
             r=64,
             lora_alpha=64,
@@ -148,23 +147,20 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=2,
-            per_device_eval_batch_size=2,
-            gradient_accumulation_steps=16,
-            gradient_checkpointing=False,
+            per_device_train_batch_size=1,
+            per_device_eval_batch_size=1,
+            gradient_accumulation_steps=32,
+            gradient_checkpointing=True,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-
-            # Safe step target for 6 hours with cuDNN disabled (~26s/step)
             max_steps=750,
             eval_strategy="steps",
-            eval_steps=150,                 # Evaluates 5 times (150, 300, 450, 600, 750)
+            eval_steps=150,
             save_strategy="steps",
             save_steps=150,
             save_total_limit=3,
-
-            # Lower learning rate & higher max_grad_norm to prevent gradient spikes
             learning_rate=5e-5,
             bf16=True,
             remove_unused_columns=False,

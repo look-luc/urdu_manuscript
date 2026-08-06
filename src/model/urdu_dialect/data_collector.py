@@ -103,9 +103,8 @@ class Data_Collector:
             return_tensors="pt",
         )
 
-        user_batch = self.processor(
+        user_batch = self.processor.tokenizer(
             text=user_text_prompts,
-            images=images,
             padding=True,
             return_tensors="pt",
         )
