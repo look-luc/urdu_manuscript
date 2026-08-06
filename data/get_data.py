@@ -125,7 +125,7 @@ def get_datasets(buffer_size: int = 1000):
     nastaliq_raw_val = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).map(**map_config)
+    ).select_columns(["image", "text"]).select(range(250)).map(**map_config)
 
     test_sources = [
         arabic_test,

@@ -132,7 +132,7 @@ class unification_urdu_lang_model:
             device_map={"": self.device},
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            attn_implementation="sdpa"
+            attn_implementation="flash_attention_2"
         )
 
         processor = AutoProcessor.from_pretrained(
@@ -141,12 +141,12 @@ class unification_urdu_lang_model:
         )
 
         peft_config = LoraConfig(
-            r=16,
+            r=64,
             lora_alpha=32,
             target_modules=[
                 "q_proj", "k_proj", "v_proj", "o_proj",
                 "gate_proj", "up_proj", "down_proj",
-                "multi_modal_projector", "mm_projector"
+                "linear_1", "linear_2"
             ],
             lora_dropout=0.0,
             bias="none",
@@ -180,7 +180,6 @@ class unification_urdu_lang_model:
             max_steps=2500,
             eval_strategy="steps",
             eval_steps=500,
-            max_eval_samples=500,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=0.5,
