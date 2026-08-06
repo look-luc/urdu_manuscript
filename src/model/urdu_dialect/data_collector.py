@@ -96,31 +96,24 @@ class Data_Collector:
             user_text_prompts.append(user_prompt_text)
             full_text_prompts.append(full_text)
 
-        vision_batch = self.processor.image_processor(
-            images=images,
-            return_tensors="pt"
-        )
-
-        user_batch = self.processor.tokenizer(
-            text=user_text_prompts,
-            padding=True,
-            return_tensors="pt",
-        )
-
-        batch = self.processor.tokenizer(
+        full_batch = self.processor(
             text=full_text_prompts,
+            images=images,
             padding=True,
             return_tensors="pt",
         )
 
-        final_batch = vision_batch.copy()
-        final_batch["input_ids"] = batch["input_ids"]
-        final_batch["attention_mask"] = batch["attention_mask"]
+        user_batch = self.processor(
+            text=user_text_prompts,
+            images=images,
+            padding=True,
+            return_tensors="pt",
+        )
 
-        input_ids = final_batch["input_ids"]
-        labels = input_ids.clone()
+        final_batch = full_batch.copy()
+        labels = full_batch["input_ids"].clone()
 
-        batch_size = input_ids.size(0)
+        batch_size = labels.size(0)
         for i in range(batch_size):
             prompt_len = user_batch["attention_mask"][i].sum().item()
             labels[i, :prompt_len] = -100
