@@ -29,7 +29,6 @@ export CUDA_CACHE_PATH="$TMPDIR/nv_cache"
 mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR" "$CUDA_CACHE_PATH"
 
 module purge
-module  load cuda
 module load anaconda
 conda activate urdu_manuscript_stable
 

@@ -107,6 +107,9 @@ class unification_urdu_lang_model:
     def _setup(self):
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
+
+        data = get_datasets()
+
         if self.device == "cuda":
             gc.collect()
             torch.cuda.empty_cache()
@@ -115,8 +118,6 @@ class unification_urdu_lang_model:
 
             torch.backends.cudnn.enabled = True
             torch.backends.cudnn.benchmark = False
-
-        data = get_datasets()
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
