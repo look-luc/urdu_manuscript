@@ -92,7 +92,6 @@ class unification_urdu_lang_model:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         torch.device(self.device)
 
-        # Explicitly disable cuDNN to prevent CUDNN_STATUS_NOT_INITIALIZED crashes
         torch.backends.cudnn.enabled = False
         torch.backends.cudnn.benchmark = False
 
@@ -145,25 +144,24 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
+        eval_subset = test_dataset.select(range(min(200, len(test_dataset))))
+
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=1,
-            per_device_eval_batch_size=1,
-            gradient_accumulation_steps=32,
+            per_device_train_batch_size=2,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=16,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
-
-            dataloader_num_workers=2,
+            dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-
             max_steps=500,
             eval_strategy="steps",
             eval_steps=100,
             save_strategy="steps",
             save_steps=100,
             save_total_limit=3,
-
             learning_rate=5e-5,
             bf16=True,
             remove_unused_columns=False,
@@ -176,7 +174,7 @@ class unification_urdu_lang_model:
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
-            eval_dataset=test_dataset,
+            eval_dataset=eval_subset,
             data_collator=Data_Collector(
                 self.processor,
                 prompt=self.prompt,
