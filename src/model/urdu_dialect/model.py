@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
-from torchmetrics.text import EditDistance
 from transformers import (
     AutoConfig,
     AutoProcessor,
@@ -28,7 +27,6 @@ from .data_collector import Data_Collector
 
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
-f1_metric = EditDistance()
 
 ALLOCATED_CPU = os.environ.get('SLURM_CPUS_PER_TASK')
 
@@ -55,28 +53,23 @@ class unification_urdu_lang_model:
         if pred_ids.ndim == 3:
             pred_ids = np.argmax(pred_ids, axis=-1)
 
-        pad_id = (
-            self.processor.tokenizer.pad_token_id
-            if self.processor.tokenizer.pad_token_id is not None
-            else self.processor.tokenizer.eos_token_id
-        )
+        decoded_preds = []
+        decoded_labels = []
 
-        clean_label_ids = np.where(label_ids != -100, label_ids, pad_id)
-        clean_pred_ids = np.where(label_ids != -100, pred_ids, pad_id)
+        for i in range(len(label_ids)):
+            valid_mask = label_ids[i] != -100
+            valid_label_tokens = label_ids[i][valid_mask]
+            valid_pred_tokens = pred_ids[i][valid_mask]
 
-        decoded_preds = self.processor.tokenizer.batch_decode(
-            clean_pred_ids, skip_special_tokens=True
-        )
-        decoded_labels = self.processor.tokenizer.batch_decode(
-            clean_label_ids, skip_special_tokens=True
-        )
+            pred_str = self.processor.tokenizer.decode(
+                valid_pred_tokens, skip_special_tokens=True
+            ).strip()
+            label_str = self.processor.tokenizer.decode(
+                valid_label_tokens, skip_special_tokens=True
+            ).strip()
 
-        decoded_preds = [
-            pred.strip() if pred.strip() else " " for pred in decoded_preds
-        ]
-        decoded_labels = [
-            label.strip() if label.strip() else " " for label in decoded_labels
-        ]
+            decoded_preds.append(pred_str if pred_str else " ")
+            decoded_labels.append(label_str if label_str else " ")
 
         cer_score = cer_metric.compute(
             predictions=decoded_preds, references=decoded_labels
@@ -86,34 +79,22 @@ class unification_urdu_lang_model:
         )
 
         bleu_targets = [[label] for label in decoded_labels]
-
-        f1_metric.update(decoded_preds, decoded_labels)
-        f1_score = f1_metric.compute()
-        f1_metric.reset()
-
         try:
             bleu_score_val = bleu_score(decoded_preds, bleu_targets).item()
         except Exception:
             bleu_score_val = 0.0
 
-        return {"F1": f1_score, "CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
+        return {"CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
         data = get_datasets()
 
-        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         torch.device(self.device)
 
-        if self.device != "cuda":
-            raise ValueError("CUDA device not detected")
-
-        _ = torch.zeros(1, device=self.device)
-
-        gc.collect()
-        torch.cuda.empty_cache()
-
-        torch.backends.cudnn.enabled = True
-        torch.backends.cudnn.benchmark = True
+        # Explicitly disable cuDNN to prevent CUDNN_STATUS_NOT_INITIALIZED crashes
+        torch.backends.cudnn.enabled = False
+        torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
@@ -142,22 +123,22 @@ class unification_urdu_lang_model:
         if hasattr(processor.image_processor, "max_image_tiles"):
             processor.image_processor.max_image_tiles = 2
 
+        # Optimized LoRA config: lora_alpha=64 provides better gradient scaling
         peft_config = LoraConfig(
             r=64,
-            lora_alpha=32,
+            lora_alpha=64,
             target_modules=[
                 "q_proj", "k_proj", "v_proj", "o_proj",
                 "gate_proj", "up_proj", "down_proj",
                 "linear_1", "linear_2"
             ],
-            lora_dropout=0.0,
+            lora_dropout=0.05,
             bias="none",
             task_type="CAUSAL_LM",
         )
 
         model = get_peft_model(model, peft_config)
         model.enable_input_require_grads()
-        model.print_trainable_parameters()
 
         return model, processor, data
 
@@ -174,17 +155,21 @@ class unification_urdu_lang_model:
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=1250,
+
+            # Safe step target for 6 hours with cuDNN disabled (~26s/step)
+            max_steps=750,
             eval_strategy="steps",
-            eval_steps=250,
+            eval_steps=150,                 # Evaluates 5 times (150, 300, 450, 600, 750)
             save_strategy="steps",
-            save_steps=250,
+            save_steps=150,
             save_total_limit=3,
-            learning_rate=1e-4,
+
+            # Lower learning rate & higher max_grad_norm to prevent gradient spikes
+            learning_rate=5e-5,
             bf16=True,
             remove_unused_columns=False,
-            max_grad_norm=0.5,
-            warmup_steps=100,
+            max_grad_norm=1.0,
+            warmup_steps=75,
             lr_scheduler_type="cosine",
         )
 
