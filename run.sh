@@ -30,12 +30,12 @@ mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR" "$CUDA
 
 module purge
 module load anaconda
-module load cuda
+# module load cuda
 
 conda activate urdu_manuscript_stable
 
-SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-export LD_LIBRARY_PATH="$SITE_PKG/torch/lib:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+# SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
+# export LD_LIBRARY_PATH="$SITE_PKG/torch/lib:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
