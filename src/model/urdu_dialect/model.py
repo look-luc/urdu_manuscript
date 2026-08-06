@@ -120,7 +120,7 @@ class unification_urdu_lang_model:
         )
 
         if hasattr(processor.image_processor, "max_pixels"):
-            processor.image_processor.max_pixels = 1280 * 28 * 28
+            processor.image_processor.max_pixels = 512 * 28 * 28
             processor.image_processor.min_pixels = 256 * 28 * 28
 
         peft_config = LoraConfig(
@@ -151,7 +151,7 @@ class unification_urdu_lang_model:
             output_dir="./results",
             per_device_train_batch_size=2,
             per_device_eval_batch_size=2,
-            gradient_accumulation_steps=16,
+            gradient_accumulation_steps=32,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=4,
@@ -169,6 +169,7 @@ class unification_urdu_lang_model:
             max_grad_norm=1.0,
             warmup_steps=50,
             lr_scheduler_type="cosine",
+            optim="paged_adamw_8bit",
         )
 
         trainer = Trainer(
