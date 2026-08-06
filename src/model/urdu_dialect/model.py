@@ -116,6 +116,8 @@ class unification_urdu_lang_model:
             torch.backends.cudnn.enabled = True
             torch.backends.cudnn.benchmark = False
 
+        data = get_datasets()
+
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
 
@@ -157,8 +159,6 @@ class unification_urdu_lang_model:
         model.enable_input_require_grads()
         model.print_trainable_parameters()
 
-        data = get_datasets()
-
         return model, processor, data
 
     def train(self, output_dir: str = "./model/urdu_manuscript_model"):
@@ -171,10 +171,9 @@ class unification_urdu_lang_model:
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=8,
             dataloader_pin_memory=False,
-            dataloader_prefetch_factor=2,
             gradient_checkpointing=True,
-            dataloader_num_workers=2,
-            dataloader_persistent_workers=True,
+            dataloader_num_workers=0,
+            dataloader_persistent_workers=False,
             num_train_epochs=1,
             learning_rate=1e-4,
             max_steps=2500,
