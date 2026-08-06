@@ -36,15 +36,9 @@ class unification_urdu_lang_model:
     def __init__(
         self,
         model_id: str = "llava-hf/llama3-llava-next-8b-hf",
-        prompt: str = """
-            You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text. Analyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.
-            Output ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription.
-        """,
+        prompt: str = """...""",
         batch_size: int = 64,
     ) -> None:
-        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-        torch.device(self.device)
-
         self.model_id = model_id
         self.prompt = prompt
         self.batch_size = batch_size
@@ -105,19 +99,21 @@ class unification_urdu_lang_model:
         return {"F1": f1_score, "CER": cer_score, "WER": wer_score, "BLEU": bleu_score_val}
 
     def _setup(self):
+        data = get_datasets()
+
+        self.device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+        torch.device(self.device)
+
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
 
-        data = get_datasets()
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        torch.cuda.reset_peak_memory_stats()
 
-        if self.device == "cuda":
-            gc.collect()
-            torch.cuda.empty_cache()
-            torch.cuda.ipc_collect()
-            torch.cuda.reset_peak_memory_stats()
-
-            torch.backends.cudnn.enabled = True
-            torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
