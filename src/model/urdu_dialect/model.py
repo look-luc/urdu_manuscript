@@ -112,8 +112,8 @@ class unification_urdu_lang_model:
         gc.collect()
         torch.cuda.empty_cache()
 
-        torch.backends.cudnn.enabled = False
-        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = True
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
@@ -170,18 +170,21 @@ class unification_urdu_lang_model:
             per_device_train_batch_size=2,
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=16,
+            gradient_checkpointing=False,
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            num_train_epochs=1,
-            learning_rate=1e-4,
-            max_steps=2500,
+            max_steps=1250,
             eval_strategy="steps",
-            eval_steps=500,
+            eval_steps=250,
+            save_strategy="steps",
+            save_steps=250,
+            save_total_limit=3,
+            learning_rate=1e-4,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=0.5,
-            warmup_steps=125,
+            warmup_steps=100,
             lr_scheduler_type="cosine",
         )
 

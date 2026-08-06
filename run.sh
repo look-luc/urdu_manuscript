@@ -3,7 +3,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
-#SBATCH --time=3:00:00
+#SBATCH --time=6:00:00
 #SBATCH --output=/projects/%u/urdu_manuscript/logs/%j.log
 #SBATCH --job-name=urdu_text_extraction
 #SBATCH --partition=blanca-clearlab2
@@ -30,12 +30,8 @@ mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR" "$CUDA
 
 module purge
 module load anaconda
-# module load cuda
 
 conda activate urdu_manuscript_stable
-
-# SITE_PKG=$(python -c "import site; print(site.getsitepackages()[0])")
-# export LD_LIBRARY_PATH="$SITE_PKG/torch/lib:$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
