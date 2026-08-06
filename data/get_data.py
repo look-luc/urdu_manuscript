@@ -11,7 +11,7 @@ PROCESSED_DIR = os.getenv("PROCESSED_DATA_DIR", f"{SCRATCH_BASE}/processed_datas
 
 SLURM_CPUS = os.getenv("SLURM_CPUS_PER_TASK")
 SYSTEM_CPUS = int(SLURM_CPUS) if SLURM_CPUS else (os.cpu_count() or 1)
-NUM_PROC = min(SYSTEM_CPUS, 16)
+NUM_PROC = 1
 MAP_BATCH_SIZE = 256
 
 

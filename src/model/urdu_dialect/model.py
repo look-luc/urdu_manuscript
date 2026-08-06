@@ -112,7 +112,7 @@ class unification_urdu_lang_model:
         gc.collect()
         torch.cuda.empty_cache()
 
-        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.enabled = False
         torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
