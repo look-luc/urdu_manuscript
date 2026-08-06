@@ -30,7 +30,7 @@ cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 f1_metric = EditDistance()
 
-ALLOCATED_CPU =  os.environ.get('SLURM_CPUS_PER_TASK')
+ALLOCATED_CPU = os.environ.get('SLURM_CPUS_PER_TASK')
 
 class unification_urdu_lang_model:
     def __init__(
@@ -107,10 +107,10 @@ class unification_urdu_lang_model:
         if self.device != "cuda":
             raise ValueError("CUDA device not detected")
 
+        _ = torch.zeros(1, device=self.device)
+
         gc.collect()
         torch.cuda.empty_cache()
-        torch.cuda.ipc_collect()
-        torch.cuda.reset_peak_memory_stats()
 
         torch.backends.cudnn.enabled = True
         torch.backends.cudnn.benchmark = False
