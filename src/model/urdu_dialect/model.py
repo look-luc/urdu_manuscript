@@ -152,20 +152,23 @@ class unification_urdu_lang_model:
             gradient_accumulation_steps=32,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
+
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=750,
+
+            max_steps=500,
             eval_strategy="steps",
-            eval_steps=150,
+            eval_steps=100,
             save_strategy="steps",
-            save_steps=150,
+            save_steps=100,
             save_total_limit=3,
+
             learning_rate=5e-5,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
-            warmup_steps=75,
+            warmup_steps=50,
             lr_scheduler_type="cosine",
         )
 
