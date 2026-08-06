@@ -156,7 +156,7 @@ class unification_urdu_lang_model:
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=750,
+            max_steps=500,
             eval_strategy="steps",
             eval_steps=100,
             save_strategy="steps",
