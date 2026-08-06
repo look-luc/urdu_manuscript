@@ -151,7 +151,7 @@ class unification_urdu_lang_model:
             output_dir="./results",
             per_device_train_batch_size=2,
             per_device_eval_batch_size=2,
-            gradient_accumulation_steps=32,
+            gradient_accumulation_steps=8,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=4,
