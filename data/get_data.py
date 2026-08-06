@@ -91,7 +91,7 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("MohamedRashad/arabic-img2md", split="test", cache_dir=CACHE_DIR),
     )
     arabic_test = (
-        arabic_raw_test.select(range(min(3000, len(arabic_raw_test))))
+        arabic_raw_test.select(range(min(250, len(arabic_raw_test))))
         .rename_column("markdown", "text")
         .select_columns(["image", "text"])
         .map(**map_config)
@@ -103,17 +103,23 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("hezarai/parsynth-ocr-200k", split="train", cache_dir=CACHE_DIR),
     ).rename_column("image_path", "image").select_columns(["image", "text"]).map(**map_config)
 
-    parsynth_test = cast(
+    parsynth_test_raw = cast(
         Dataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="test", cache_dir=CACHE_DIR),
-    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(**map_config)
+    )
+    parsynth_test = (
+        parsynth_test_raw.select(range(min(250, len(parsynth_test_raw))))
+        .rename_column("image_path", "image")
+        .select_columns(["image", "text"])
+        .map(**map_config)
+    )
 
     persian_raw = cast(
         Dataset,
         load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
     ).select_columns(["image", "text"])
 
-    persian_pixel_test = persian_raw.select(range(10000)).map(**map_config)
+    persian_pixel_test = persian_raw.select(range(250)).map(**map_config)
     persian_pixel_train = persian_raw.select(range(10000, 35000)).map(**map_config)
 
     print("Loading urdu datasets...")
