@@ -96,7 +96,7 @@ class Data_Collector:
             user_text_prompts.append(user_prompt_text)
             full_text_prompts.append(full_text)
 
-        vision_batch = self.processor(
+        vision_batch = self.processor.image_processor(
             images=images,
             return_tensors="pt"
         )
@@ -126,6 +126,6 @@ class Data_Collector:
             labels[i, :prompt_len] = -100
 
         labels[labels == self.pad_token_id] = -100
-        batch["labels"] = labels
+        final_batch["labels"] = labels
 
-        return batch
+        return final_batch

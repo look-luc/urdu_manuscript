@@ -114,14 +114,16 @@ class unification_urdu_lang_model:
             torch.cuda.reset_peak_memory_stats()
 
             torch.backends.cudnn.enabled = True
-            torch.backends.cudnn.benchmark = True
+            torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
 
         bnb_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-            llm_int8_threshold=6.0,
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
         model = LlavaNextForConditionalGeneration.from_pretrained(
@@ -142,17 +144,11 @@ class unification_urdu_lang_model:
             r=16,
             lora_alpha=32,
             target_modules=[
-                "q_proj",
-                "k_proj",
-                "v_proj",
-                "o_proj",
-                "gate_proj",
-                "up_proj",
-                "down_proj",
-                "wqkv",
-                "wo",
+                "q_proj", "k_proj", "v_proj", "o_proj",
+                "gate_proj", "up_proj", "down_proj",
+                "multi_modal_projector", "mm_projector"
             ],
-            lora_dropout=0.05,
+            lora_dropout=0.0,
             bias="none",
             task_type="CAUSAL_LM",
         )
@@ -171,22 +167,23 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=1,
-            per_device_eval_batch_size=1,
-            gradient_accumulation_steps=int(ALLOCATED_CPU) if ALLOCATED_CPU is not None else 8,
-            dataloader_pin_memory=True,
+            per_device_train_batch_size=4,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=8,
+            dataloader_pin_memory=False,
             dataloader_prefetch_factor=2,
             gradient_checkpointing=True,
-            dataloader_num_workers=4,
+            dataloader_num_workers=2,
             dataloader_persistent_workers=True,
             num_train_epochs=1,
-            learning_rate=2e-5,
+            learning_rate=1e-4,
             max_steps=2500,
             eval_strategy="steps",
             eval_steps=500,
+            max_eval_samples=500,
             bf16=True,
             remove_unused_columns=False,
-            max_grad_norm=1.0,
+            max_grad_norm=0.5,
             warmup_steps=125,
             lr_scheduler_type="cosine",
         )
