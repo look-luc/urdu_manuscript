@@ -10,9 +10,9 @@ from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoConfig,
+    AutoModelForMultimodalLM,
     AutoProcessor,
     BitsAndBytesConfig,
-    LlavaNextForConditionalGeneration,
     Trainer,
     TrainingArguments,
 )
@@ -33,8 +33,8 @@ ALLOCATED_CPU = os.environ.get('SLURM_CPUS_PER_TASK')
 class unification_urdu_lang_model:
     def __init__(
         self,
-        model_id: str = "llava-hf/llama3-llava-next-8b-hf",
-        prompt: str = """...""",
+        model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        prompt: str = """You are an expert OCR model for historical Urdu and Arabic-script manuscripts. Transcribe the text line-by-line. If there are marginal notes or footnotes, transcribe them separately at the end under 'Marginalia'. Do not translate.""",
         batch_size: int = 64,
     ) -> None:
         self.model_id = model_id
@@ -105,7 +105,7 @@ class unification_urdu_lang_model:
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
 
-        model = LlavaNextForConditionalGeneration.from_pretrained(
+        model = AutoModelForMultimodalLM.from_pretrained(
             self.model_id,
             quantization_config=bnb_config,
             device_map={"": self.device},
@@ -119,8 +119,9 @@ class unification_urdu_lang_model:
             trust_remote_code=True,
         )
 
-        if hasattr(processor.image_processor, "max_image_tiles"):
-            processor.image_processor.max_image_tiles = 2
+        if hasattr(processor.image_processor, "max_pixels"):
+            processor.image_processor.max_pixels = 1280 * 28 * 28
+            processor.image_processor.min_pixels = 256 * 28 * 28
 
         peft_config = LoraConfig(
             r=64,
@@ -128,7 +129,7 @@ class unification_urdu_lang_model:
             target_modules=[
                 "q_proj", "k_proj", "v_proj", "o_proj",
                 "gate_proj", "up_proj", "down_proj",
-                "linear_1", "linear_2"
+                "merger.mlp.0", "merger.mlp.2"
             ],
             lora_dropout=0.05,
             bias="none",

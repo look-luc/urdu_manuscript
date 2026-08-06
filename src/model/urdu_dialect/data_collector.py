@@ -1,25 +1,6 @@
 import torch
 import torchvision.io as tv_io
-import torchvision.transforms.functional as F
-
-
-def pad_to_min_dim(img_tensor: torch.Tensor, min_dim: int = 336) -> torch.Tensor:
-    c, h, w = img_tensor.shape
-    new_h = max(h, min_dim)
-    new_w = max(w, min_dim)
-
-    padded_tensor = torch.full(
-        (c, new_h, new_w),
-        fill_value=255,
-        dtype=img_tensor.dtype,
-        device=img_tensor.device,
-    )
-
-    top = (new_h - h) // 2
-    left = (new_w - w) // 2
-
-    padded_tensor[:, top : top + h, left : left + w] = img_tensor
-    return padded_tensor
+import torchvision.transforms.v2.functional as TVF
 
 
 class Data_Collector:
@@ -50,13 +31,13 @@ class Data_Collector:
             elif isinstance(img_raw, torch.Tensor):
                 img_tensor = img_raw
             elif hasattr(img_raw, "convert"):
-                img_tensor = F.pil_to_tensor(img_raw.convert("RGB"))
+                img_tensor = TVF.pil_to_tensor(img_raw.convert("RGB"))
             else:
                 raise ValueError(
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            img_tensor = pad_to_min_dim(img_tensor, min_dim=336)
+            # Preserve dynamic resolution (no manual padding)
             images.append(img_tensor)
             txt_content = feature.get("text", "")
 
@@ -103,8 +84,9 @@ class Data_Collector:
             return_tensors="pt",
         )
 
-        user_batch = self.processor.tokenizer(
+        user_batch = self.processor(
             text=user_text_prompts,
+            images=images,
             padding=True,
             return_tensors="pt",
         )
