@@ -151,9 +151,9 @@ class unification_urdu_lang_model:
             r=64,
             lora_alpha=64,
             target_modules=[
-                "q_proj", "k_proj", "v_proj", "o_proj",
+                "q_proj", "v_proj", "k_proj", "o_proj",
                 "gate_proj", "up_proj", "down_proj",
-                "merger.mlp.0", "merger.mlp.2"
+                "merger.mlp.0", "merger.mlp.2", "visual.blocks"
             ],
             lora_dropout=0.05,
             bias="none",
@@ -181,18 +181,18 @@ class unification_urdu_lang_model:
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=500,
+            max_steps=1500,
             logging_steps=1,
             eval_strategy="steps",
             eval_steps=50,
             save_strategy="steps",
             save_steps=100,
             save_total_limit=1,
-            learning_rate=5e-5,
+            learning_rate=2E-4,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
-            warmup_steps=50,
+            warmup_steps=150,
             lr_scheduler_type="cosine",
             optim="paged_adamw_8bit",
         )

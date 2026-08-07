@@ -3,3 +3,4 @@ Images.zip
 test.csv
 train.csv
 img_*.jpg
+src/model/text_extraction/urdu_manuscript_model/adapter_model.safetensors
