@@ -1,10 +1,8 @@
-import gc
 import os
 import sys
 from pathlib import Path
 
 import evaluate
-import numpy as np
 import torch
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
@@ -28,11 +26,19 @@ from .data_collector import Data_Collector
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 
+SCRATCH_BASE = Path(f"/scratch/alpine/{os.getenv('USER', 'lude4390')}")
+DEFAULT_OUTPUT_DIR = SCRATCH_BASE / "model" / "urdu_manuscript_model"
+DEFAULT_RESULTS_DIR = SCRATCH_BASE / "results"
+
 
 class AutoregressiveTrainer(Trainer):
     """Custom Trainer overriding prediction_step for Side 2 autoregressive generation."""
     def prediction_step(
-        self, model, inputs, prediction_loss_only, ignore_keys=None
+        self,
+        model: torch.nn.Module,
+        inputs: dict,
+        prediction_loss_only: bool,
+        ignore_keys=None,
     ):
         if prediction_loss_only:
             return super().prediction_step(
@@ -40,19 +46,23 @@ class AutoregressiveTrainer(Trainer):
             )
 
         inputs = self._prepare_inputs(inputs)
+        unwrapped_model = self.unwrap_model(model)
 
         with torch.no_grad():
             outputs = model(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
                 pixel_values=inputs.get("pixel_values"),
+                image_grid_thw=inputs.get("image_grid_thw"),
                 labels=inputs["labels"],
             )
             loss = outputs.loss.detach()
-            generated_ids = model.generate(
+
+            generated_ids = unwrapped_model.generate(
                 input_ids=inputs["user_input_ids"],
                 attention_mask=inputs["user_attention_mask"],
                 pixel_values=inputs.get("pixel_values"),
+                image_grid_thw=inputs.get("image_grid_thw"),
                 max_new_tokens=256,
             )
 
@@ -147,13 +157,15 @@ class unification_urdu_lang_model:
             processor.image_processor.max_pixels = 512 * 28 * 28
             processor.image_processor.min_pixels = 256 * 28 * 28
 
+        # FIX: Replace 'visual.blocks' and 'visual.patch_embed' with valid sub-layer target names
         peft_config = LoraConfig(
             r=64,
             lora_alpha=64,
             target_modules=[
                 "q_proj", "v_proj", "k_proj", "o_proj",
                 "gate_proj", "up_proj", "down_proj",
-                "merger.mlp.0", "merger.mlp.2", "visual.blocks"
+                "merger.mlp.0", "merger.mlp.2",
+                "qkv", "proj",
             ],
             lora_dropout=0.05,
             bias="none",
@@ -165,14 +177,14 @@ class unification_urdu_lang_model:
 
         return model, processor, data
 
-    def train(self, output_dir: str = "./model/urdu_manuscript_model"):
+    def train(self, output_dir: str = str(DEFAULT_OUTPUT_DIR)):
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
         eval_subset = test_dataset.select(range(min(200, len(test_dataset))))
 
         training_args = TrainingArguments(
-            output_dir="./results",
+            output_dir=str(DEFAULT_RESULTS_DIR),
             per_device_train_batch_size=2,
             per_device_eval_batch_size=2,
             gradient_accumulation_steps=8,
@@ -210,6 +222,7 @@ class unification_urdu_lang_model:
         )
 
         train_result = trainer.train()
+        os.makedirs(output_dir, exist_ok=True)
         trainer.save_model(output_dir)
         self.processor.save_pretrained(output_dir)
 
