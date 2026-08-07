@@ -30,6 +30,15 @@ wer_metric = evaluate.load("wer")
 
 ALLOCATED_CPU = os.environ.get('SLURM_CPUS_PER_TASK')
 
+def preprocess_logits_for_metrics(logits, labels):
+    """
+    Reduces 3D output logits (Batch, Seq_Len, Vocab_Size) to 2D token IDs (Batch, Seq_Len)
+    directly on the GPU before cross-batch evaluation collection.
+    """
+    if isinstance(logits, tuple):
+        logits = logits[0]
+    return logits.argmax(dim=-1)
+
 class unification_urdu_lang_model:
     def __init__(
         self,
@@ -182,6 +191,7 @@ class unification_urdu_lang_model:
                 prompt=self.prompt,
             ),
             compute_metrics=self._compute_metrics,
+            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
 
         train_result = trainer.train()
