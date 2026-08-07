@@ -39,6 +39,8 @@ module load anaconda
 
 conda activate urdu_manuscript_stable
 
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$CONDA_PREFIX/lib/python3.10/site-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
+
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cd /projects/$USER/urdu_manuscript
