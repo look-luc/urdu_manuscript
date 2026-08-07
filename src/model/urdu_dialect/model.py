@@ -162,7 +162,7 @@ class unification_urdu_lang_model:
             eval_steps=100,
             save_strategy="steps",
             save_steps=100,
-            save_total_limit=3,
+            save_total_limit=1,
             learning_rate=5e-5,
             bf16=True,
             remove_unused_columns=False,

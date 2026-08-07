@@ -26,6 +26,12 @@ export TRANSFORMERS_CACHE="$SCRATCH_DIR/.cache/transformers"
 export TMPDIR="$SCRATCH_DIR/tmp"
 export CUDA_CACHE_PATH="$TMPDIR/nv_cache"
 
+cleanup() {
+    echo "Cleaning up temporary files in $TMPDIR..."
+    rm -rf "$TMPDIR"/*
+}
+trap cleanup EXIT
+
 mkdir -p "$HF_HOME" "$EVALUATE_CACHE_DIR" "$TRANSFORMERS_CACHE" "$TMPDIR" "$CUDA_CACHE_PATH"
 
 module purge
