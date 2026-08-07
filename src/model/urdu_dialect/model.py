@@ -28,16 +28,37 @@ from .data_collector import Data_Collector
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 
-ALLOCATED_CPU = os.environ.get('SLURM_CPUS_PER_TASK')
 
-def preprocess_logits_for_metrics(logits, labels):
-    """
-    Reduces 3D output logits (Batch, Seq_Len, Vocab_Size) to 2D token IDs (Batch, Seq_Len)
-    directly on the GPU before cross-batch evaluation collection.
-    """
-    if isinstance(logits, tuple):
-        logits = logits[0]
-    return logits.argmax(dim=-1)
+class AutoregressiveTrainer(Trainer):
+    """Custom Trainer overriding prediction_step for Side 2 autoregressive generation."""
+    def prediction_step(
+        self, model, inputs, prediction_loss_only, ignore_keys=None
+    ):
+        if prediction_loss_only:
+            return super().prediction_step(
+                model, inputs, prediction_loss_only, ignore_keys=ignore_keys
+            )
+
+        inputs = self._prepare_inputs(inputs)
+
+        with torch.no_grad():
+            outputs = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                pixel_values=inputs.get("pixel_values"),
+                labels=inputs["labels"],
+            )
+            loss = outputs.loss.detach()
+            generated_ids = model.generate(
+                input_ids=inputs["user_input_ids"],
+                attention_mask=inputs["user_attention_mask"],
+                pixel_values=inputs.get("pixel_values"),
+                max_new_tokens=256,
+            )
+
+        labels = inputs["labels"]
+        return (loss, generated_ids, labels)
+
 
 class unification_urdu_lang_model:
     def __init__(
@@ -59,16 +80,14 @@ class unification_urdu_lang_model:
         if isinstance(pred_ids, tuple):
             pred_ids = pred_ids[0]
 
-        if pred_ids.ndim == 3:
-            pred_ids = np.argmax(pred_ids, axis=-1)
-
         decoded_preds = []
         decoded_labels = []
 
         for i in range(len(label_ids)):
             valid_mask = label_ids[i] != -100
             valid_label_tokens = label_ids[i][valid_mask]
-            valid_pred_tokens = pred_ids[i][valid_mask]
+
+            valid_pred_tokens = pred_ids[i]
 
             pred_str = self.processor.tokenizer.decode(
                 valid_pred_tokens, skip_special_tokens=True
@@ -99,10 +118,6 @@ class unification_urdu_lang_model:
         data = get_datasets()
 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        torch.device(self.device)
-
-        torch.backends.cudnn.enabled = False
-        torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
         config.use_cache = False
@@ -120,7 +135,7 @@ class unification_urdu_lang_model:
             device_map={"": self.device},
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            attn_implementation="sdpa"
+            attn_implementation="sdpa",
         )
 
         processor = AutoProcessor.from_pretrained(
@@ -167,8 +182,9 @@ class unification_urdu_lang_model:
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
             max_steps=500,
+            logging_steps=1,
             eval_strategy="steps",
-            eval_steps=100,
+            eval_steps=50,
             save_strategy="steps",
             save_steps=100,
             save_total_limit=1,
@@ -181,7 +197,7 @@ class unification_urdu_lang_model:
             optim="paged_adamw_8bit",
         )
 
-        trainer = Trainer(
+        trainer = AutoregressiveTrainer(
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
@@ -191,7 +207,6 @@ class unification_urdu_lang_model:
                 prompt=self.prompt,
             ),
             compute_metrics=self._compute_metrics,
-            preprocess_logits_for_metrics=preprocess_logits_for_metrics,
         )
 
         train_result = trainer.train()

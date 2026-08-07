@@ -7,11 +7,6 @@ class Data_Collector:
     def __init__(self, processor, prompt: str = ""):
         self.processor = processor
         self.prompt = prompt
-        self.pad_token_id = (
-            self.processor.tokenizer.pad_token_id
-            if self.processor.tokenizer.pad_token_id is not None
-            else self.processor.tokenizer.eos_token_id
-        )
 
     def __call__(self, features):
         images = []
@@ -37,7 +32,6 @@ class Data_Collector:
                     f"Unsupported image format in collator: {type(img_raw)}"
                 )
 
-            # Preserve dynamic resolution (no manual padding)
             images.append(img_tensor)
             txt_content = feature.get("text", "")
 
@@ -99,7 +93,12 @@ class Data_Collector:
             prompt_len = user_batch["attention_mask"][i].sum().item()
             labels[i, :prompt_len] = -100
 
-        labels[labels == self.pad_token_id] = -100
+        pad_id = self.processor.tokenizer.pad_token_id
+        if pad_id is not None:
+            labels[labels == pad_id] = -100
+
         final_batch["labels"] = labels
+        final_batch["user_input_ids"] = user_batch["input_ids"]
+        final_batch["user_attention_mask"] = user_batch["attention_mask"]
 
         return final_batch
