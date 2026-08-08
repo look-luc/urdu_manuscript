@@ -201,7 +201,7 @@ class unification_urdu_lang_model:
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=2500,
+            max_steps=1000,
             logging_steps=10,
             eval_strategy="steps",
             eval_steps=250,
@@ -221,7 +221,7 @@ class unification_urdu_lang_model:
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
-            eval_dataset=eval_subset,
+            eval_dataset=test_dataset,
             data_collator=Data_Collector(
                 self.processor,
                 prompt=self.prompt,
