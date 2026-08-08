@@ -189,7 +189,7 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        # eval_subset = test_dataset.select(range(min(50, len(test_dataset))))
+        eval_subset = test_dataset.select(range(min(50, len(test_dataset))))
 
         training_args = TrainingArguments(
             output_dir=str(DEFAULT_RESULTS_DIR),
@@ -212,7 +212,7 @@ class unification_urdu_lang_model:
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
-            warmup_steps=150,
+            warmup_steps=100,
             lr_scheduler_type="cosine",
             optim="paged_adamw_8bit",
         )
@@ -221,7 +221,7 @@ class unification_urdu_lang_model:
             model=self.model,
             args=training_args,
             train_dataset=train_dataset,
-            eval_dataset=test_dataset,
+            eval_dataset=eval_subset,
             data_collator=Data_Collector(
                 self.processor,
                 prompt=self.prompt,
