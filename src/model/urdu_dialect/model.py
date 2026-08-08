@@ -58,13 +58,17 @@ class AutoregressiveTrainer(Trainer):
             )
             loss = outputs.loss.detach()
 
-            generated_ids = unwrapped_model.generate(
-                input_ids=inputs["user_input_ids"],
-                attention_mask=inputs["user_attention_mask"],
-                pixel_values=inputs.get("pixel_values"),
-                image_grid_thw=inputs.get("image_grid_thw"),
-                max_new_tokens=256,
-            )
+            if "user_input_ids" in inputs:
+                generated_ids = unwrapped_model.generate(
+                    input_ids=inputs["user_input_ids"],
+                    attention_mask=inputs["user_attention_mask"],
+                    pixel_values=inputs.get("pixel_values"),
+                    image_grid_thw=inputs.get("image_grid_thw"),
+                    max_new_tokens=128,
+                    use_cache=True,
+                )
+            else:
+                generated_ids = None
 
         labels = inputs["labels"]
         return (loss, generated_ids, labels)
@@ -147,7 +151,7 @@ class unification_urdu_lang_model:
             self.model_id,
             quantization_config=bnb_config,
             device_map={"": self.device},
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
             attn_implementation="sdpa",
         )

@@ -12,14 +12,11 @@ from src.test import run_diagnostics
 load_dotenv()
 hf_token = os.getenv("HF_TOKEN")
 
-# Authenticate Hugging Face Hub if token is present
 if hf_token:
     login(token=hf_token)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_PATH = SCRIPT_DIR.parent / "data"
-
-# Route output writes to high-capacity scratch storage instead of /projects/
 SCRATCH_BASE = Path(f"/scratch/alpine/{os.getenv('USER', 'lude4390')}")
 
 
@@ -38,18 +35,13 @@ def run_model(what_model: str):
         print(f"Finished, model_out.txt is located in {output_dir}")
 
     elif what_model == "urdu_dialect":
-        try:
-            urdu_model = unification_urdu_lang_model()
-            urdu_model.train()
-            save_status = f"Successfully trained model setup: {urdu_model.model_id}"
-
-        except Exception as e:
-            save_status = f"ERROR with model: {str(e)}"
+        urdu_model = unification_urdu_lang_model()
+        urdu_model.train()
 
         output_dir = SCRATCH_BASE / "model" / "urdu_dialect_output"
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / "model_out.txt", "w", encoding="utf-8") as file:
-            file.write(save_status)
+            file.write(f"Successfully trained model setup: {urdu_model.model_id}")
 
     elif what_model == "graph":
         metrics_graph()
