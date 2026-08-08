@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+from huggingface_hub import login
 
 from src.model.text_extraction.model import text_extraction
 from src.model.urdu_dialect.graphs import metrics_graph
@@ -11,16 +12,23 @@ from src.test import run_diagnostics
 load_dotenv()
 hf_token = os.getenv("HF_TOKEN")
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+# Authenticate Hugging Face Hub if token is present
+if hf_token:
+    login(token=hf_token)
 
+SCRIPT_DIR = Path(__file__).resolve().parent
 DATA_PATH = SCRIPT_DIR.parent / "data"
 
-def run_model(what_model:str):
-    if what_model == "text_extraction":
-        pg10 = text_extraction().extract(str(DATA_PATH/"eval_data/pg10.png"))
-        pg11 = text_extraction().extract(str(DATA_PATH/"eval_data/pg11.png"))
+# Route output writes to high-capacity scratch storage instead of /projects/
+SCRATCH_BASE = Path(f"/scratch/alpine/{os.getenv('USER', 'lude4390')}")
 
-        output_dir = Path("./model/text_extraction_output")
+
+def run_model(what_model: str):
+    if what_model == "text_extraction":
+        pg10 = text_extraction().extract(str(DATA_PATH / "eval_data/pg10.png"))
+        pg11 = text_extraction().extract(str(DATA_PATH / "eval_data/pg11.png"))
+
+        output_dir = SCRATCH_BASE / "model" / "text_extraction_output"
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / "model_out.txt", "w", encoding="utf-8") as file:
             file.write("Page 10\n")
@@ -28,6 +36,7 @@ def run_model(what_model:str):
             file.write("\n\nPage 11\n")
             file.write(pg11)
         print(f"Finished, model_out.txt is located in {output_dir}")
+
     elif what_model == "urdu_dialect":
         try:
             urdu_model = unification_urdu_lang_model()
@@ -37,10 +46,11 @@ def run_model(what_model:str):
         except Exception as e:
             save_status = f"ERROR with model: {str(e)}"
 
-        output_dir = Path("./model/urdu_dialect_output")
+        output_dir = SCRATCH_BASE / "model" / "urdu_dialect_output"
         output_dir.mkdir(parents=True, exist_ok=True)
         with open(output_dir / "model_out.txt", "w", encoding="utf-8") as file:
             file.write(save_status)
+
     elif what_model == "graph":
         metrics_graph()
     elif what_model == "diagnostic":
