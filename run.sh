@@ -19,6 +19,9 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 
+export CUDA_LAUNCH_BLOCKING=0
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 export SCRATCH_DIR="/scratch/alpine/$USER"
 export HF_HOME="$SCRATCH_DIR/.cache/huggingface"
 export EVALUATE_CACHE_DIR="$SCRATCH_DIR/.cache/evaluate"
@@ -40,8 +43,6 @@ module load anaconda
 conda activate urdu_manuscript_stable
 
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 cd /projects/$USER/urdu_manuscript
 

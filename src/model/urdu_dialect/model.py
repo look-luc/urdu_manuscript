@@ -134,7 +134,7 @@ class unification_urdu_lang_model:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if torch.cuda.is_available():
-            torch.backends.cudnn.enabled = True
+            torch.backends.cudnn.enabled = False
             torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
@@ -165,7 +165,6 @@ class unification_urdu_lang_model:
             processor.image_processor.max_pixels = 512 * 28 * 28
             processor.image_processor.min_pixels = 256 * 28 * 28
 
-        # FIX: Replace 'visual.blocks' and 'visual.patch_embed' with valid sub-layer target names
         peft_config = LoraConfig(
             r=64,
             lora_alpha=64,
