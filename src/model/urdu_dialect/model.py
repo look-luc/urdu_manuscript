@@ -130,7 +130,7 @@ class unification_urdu_lang_model:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if torch.cuda.is_available():
-            torch.backends.cuda.enable_cudnn_sdp(False)
+            torch.backends.cudnn.enabled = True
             torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
