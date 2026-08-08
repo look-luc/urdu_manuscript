@@ -88,7 +88,7 @@ class unification_urdu_lang_model:
 
         self.model, self.processor, self.data = self._setup()
 
-    def compute_metrics(eval_pred, tokenizer):
+    def _compute_metrics(eval_pred, tokenizer):
         predictions, labels = eval_pred
 
         if isinstance(predictions, tuple):
