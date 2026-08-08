@@ -188,24 +188,24 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        eval_subset = test_dataset.select(range(min(200, len(test_dataset))))
+        # eval_subset = test_dataset.select(range(min(50, len(test_dataset))))
 
         training_args = TrainingArguments(
             output_dir=str(DEFAULT_RESULTS_DIR),
-            per_device_train_batch_size=2,
-            per_device_eval_batch_size=2,
-            gradient_accumulation_steps=8,
+            per_device_train_batch_size=4,
+            per_device_eval_batch_size=4,
+            gradient_accumulation_steps=4,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
-            dataloader_num_workers=0,
-            dataloader_pin_memory=False,
-            dataloader_persistent_workers=False,
+            dataloader_num_workers=4,
+            dataloader_pin_memory=True,
+            dataloader_persistent_workers=True,
             max_steps=1500,
-            logging_steps=1,
+            logging_steps=10,
             eval_strategy="steps",
-            eval_steps=50,
+            eval_steps=250,
             save_strategy="steps",
-            save_steps=100,
+            save_steps=250,
             save_total_limit=1,
             learning_rate=2E-4,
             bf16=True,
