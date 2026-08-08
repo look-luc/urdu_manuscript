@@ -88,7 +88,7 @@ class unification_urdu_lang_model:
 
         self.model, self.processor, self.data = self._setup()
 
-    def _compute_metrics(eval_pred, tokenizer):
+    def _compute_metrics(self, eval_pred):
         predictions, labels = eval_pred
 
         if isinstance(predictions, tuple):
@@ -101,6 +101,7 @@ class unification_urdu_lang_model:
         decoded_labels = []
 
         ignore_index = -100
+        tokenizer = self.processor.tokenizer
         pad_id = tokenizer.pad_token_id
 
         for pred_seq, label_seq in zip(predictions, labels):
