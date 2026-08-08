@@ -46,7 +46,8 @@ class AutoregressiveTrainer(Trainer):
             )
 
         inputs = self._prepare_inputs(inputs)
-        unwrapped_model = self.unwrap_model(model)
+
+        unwrapped_model = self.accelerator.unwrap_model(model)
 
         with torch.no_grad():
             outputs = model(
@@ -200,7 +201,7 @@ class unification_urdu_lang_model:
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=1000,
+            max_steps=2500,
             logging_steps=10,
             eval_strategy="steps",
             eval_steps=250,
