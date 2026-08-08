@@ -79,7 +79,7 @@ class unification_urdu_lang_model:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
-        prompt: str = """You are an expert OCR model for historical Urdu and Arabic-script manuscripts. Transcribe the text line-by-line. If there are marginal notes or footnotes, transcribe them separately at the end under 'Marginalia'. Do not translate.""",
+        prompt: str = """You are an expert OCR model for historical Urdu and Arabic-script manuscripts with expert knowledge of Farsi/Persian, Arabic and Urdu. Transcribe the text line-by-line. If there are marginal notes or footnotes, transcribe them separately at the end under 'Marginalia'. Do not translate.""",
         batch_size: int = 64,
     ) -> None:
         self.model_id = model_id
@@ -88,31 +88,33 @@ class unification_urdu_lang_model:
 
         self.model, self.processor, self.data = self._setup()
 
-    def _compute_metrics(self, eval_pred):
-        pred_ids = eval_pred.predictions
-        label_ids = eval_pred.label_ids
+    def compute_metrics(eval_pred, tokenizer):
+        predictions, labels = eval_pred
 
-        if isinstance(pred_ids, tuple):
-            pred_ids = pred_ids[0]
+        if isinstance(predictions, tuple):
+            predictions = predictions[0]
+
+        if predictions.ndim == 3:
+            predictions = np.argmax(predictions, axis=-1)
 
         decoded_preds = []
         decoded_labels = []
 
-        for i in range(len(label_ids)):
-            valid_mask = label_ids[i] != -100
-            valid_label_tokens = label_ids[i][valid_mask]
+        ignore_index = -100
+        pad_id = tokenizer.pad_token_id
 
-            valid_pred_tokens = pred_ids[i]
+        for pred_seq, label_seq in zip(predictions, labels):
+            clean_pred = [
+                int(token) for token in pred_seq
+                if token != ignore_index and token != pad_id and token >= 0
+            ]
+            clean_label = [
+                int(token) for token in label_seq
+                if token != ignore_index and token != pad_id and token >= 0
+            ]
 
-            pred_str = self.processor.tokenizer.decode(
-                valid_pred_tokens, skip_special_tokens=True
-            ).strip()
-            label_str = self.processor.tokenizer.decode(
-                valid_label_tokens, skip_special_tokens=True
-            ).strip()
-
-            decoded_preds.append(pred_str if pred_str else " ")
-            decoded_labels.append(label_str if label_str else " ")
+            decoded_preds.append(tokenizer.decode(clean_pred, skip_special_tokens=True))
+            decoded_labels.append(tokenizer.decode(clean_label, skip_special_tokens=True))
 
         cer_score = cer_metric.compute(
             predictions=decoded_preds, references=decoded_labels
