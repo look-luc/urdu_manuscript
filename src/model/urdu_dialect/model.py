@@ -26,7 +26,7 @@ from .data_collector import Data_Collector
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 
-SCRATCH_BASE = Path(f"/scratch/alpine/{os.getenv('USER', 'lude4390')}")
+SCRATCH_BASE = Path(f"/projects/{os.getenv('USER', 'lude4390')}")
 DEFAULT_OUTPUT_DIR = SCRATCH_BASE / "model" / "urdu_manuscript_model"
 DEFAULT_RESULTS_DIR = SCRATCH_BASE / "results"
 
@@ -34,45 +34,49 @@ DEFAULT_RESULTS_DIR = SCRATCH_BASE / "results"
 class AutoregressiveTrainer(Trainer):
     """Custom Trainer overriding prediction_step for Side 2 autoregressive generation."""
     def prediction_step(
-        self,
-        model: torch.nn.Module,
-        inputs: dict,
-        prediction_loss_only: bool,
-        ignore_keys=None,
-    ):
-        if prediction_loss_only:
-            return super().prediction_step(
-                model, inputs, prediction_loss_only, ignore_keys=ignore_keys
-            )
+            self,
+            model: torch.nn.Module,
+            inputs: dict,
+            prediction_loss_only: bool,
+            ignore_keys=None,
+        ):
+            if prediction_loss_only:
+                return super().prediction_step(
+                    model, inputs, prediction_loss_only, ignore_keys=ignore_keys
+                )
 
-        inputs = self._prepare_inputs(inputs)
+            inputs = self._prepare_inputs(inputs)
 
-        unwrapped_model = self.accelerator.unwrap_model(model)
+            unwrapped_model = self.accelerator.unwrap_model(model)
 
-        with torch.no_grad():
-            outputs = model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                pixel_values=inputs.get("pixel_values"),
-                image_grid_thw=inputs.get("image_grid_thw"),
-                labels=inputs["labels"],
-            )
-            loss = outputs.loss.detach()
-
-            if "user_input_ids" in inputs:
-                generated_ids = unwrapped_model.generate(
-                    input_ids=inputs["user_input_ids"],
-                    attention_mask=inputs["user_attention_mask"],
+            with torch.no_grad():
+                outputs = model(
+                    input_ids=inputs["input_ids"],
+                    attention_mask=inputs["attention_mask"],
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
-                    max_new_tokens=128,
-                    use_cache=True,
+                    labels=inputs["labels"],
                 )
-            else:
-                generated_ids = None
+                loss = outputs.loss.detach()
 
-        labels = inputs["labels"]
-        return (loss, generated_ids, labels)
+                if "user_input_ids" in inputs:
+                    prompt_len = inputs["user_input_ids"].shape[1]
+
+                    generated_ids = unwrapped_model.generate(
+                        input_ids=inputs["user_input_ids"],
+                        attention_mask=inputs["user_attention_mask"],
+                        pixel_values=inputs.get("pixel_values"),
+                        image_grid_thw=inputs.get("image_grid_thw"),
+                        max_new_tokens=512,
+                        use_cache=True,
+                    )
+
+                    generated_ids = generated_ids[:, prompt_len:]
+                else:
+                    generated_ids = None
+
+            labels = inputs["labels"]
+            return (loss, generated_ids, labels)
 
 
 class unification_urdu_lang_model:
@@ -165,8 +169,11 @@ class unification_urdu_lang_model:
             trust_remote_code=True,
         )
 
+        if hasattr(processor, "tokenizer") and processor.tokenizer is not None:
+            processor.tokenizer.padding_side = "left"
+
         if hasattr(processor.image_processor, "max_pixels"):
-            processor.image_processor.max_pixels = 512 * 28 * 28
+            processor.image_processor.max_pixels = 1024 * 28 * 28
             processor.image_processor.min_pixels = 256 * 28 * 28
 
         peft_config = LoraConfig(
@@ -211,7 +218,7 @@ class unification_urdu_lang_model:
             save_strategy="steps",
             save_steps=250,
             save_total_limit=1,
-            learning_rate=2E-4,
+            learning_rate=1E-4,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
@@ -233,8 +240,17 @@ class unification_urdu_lang_model:
         )
 
         train_result = trainer.train()
+
         os.makedirs(output_dir, exist_ok=True)
         trainer.save_model(output_dir)
         self.processor.save_pretrained(output_dir)
+
+        if hasattr(self.processor, "tokenizer") and self.processor.tokenizer is not None:
+            self.processor.tokenizer.save_pretrained(output_dir)
+
+        base_model = self.model.get_base_model() if hasattr(self.model, "get_base_model") else self.model
+        gen_config = getattr(base_model, "generation_config", None)
+        if gen_config is not None and hasattr(gen_config, "save_pretrained"):
+            gen_config.save_pretrained(output_dir)
 
         return train_result

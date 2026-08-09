@@ -71,12 +71,19 @@ class Data_Collector:
             user_text_prompts.append(user_prompt_text)
             full_text_prompts.append(full_text)
 
+        # Right-padding for full training sequences
+        if hasattr(self.processor, "tokenizer") and self.processor.tokenizer is not None:
+            self.processor.tokenizer.padding_side = "right"
+
         full_batch = self.processor(
             text=full_text_prompts,
             images=images,
             padding=True,
             return_tensors="pt",
         )
+
+        if hasattr(self.processor, "tokenizer") and self.processor.tokenizer is not None:
+            self.processor.tokenizer.padding_side = "left"
 
         user_batch = self.processor(
             text=user_text_prompts,
@@ -93,7 +100,8 @@ class Data_Collector:
             prompt_len = user_batch["attention_mask"][i].sum().item()
             labels[i, :prompt_len] = -100
 
-        pad_id = self.processor.tokenizer.pad_token_id
+        tokenizer = getattr(self.processor, "tokenizer", None)
+        pad_id = tokenizer.pad_token_id if tokenizer is not None else getattr(self.processor, "pad_token_id", None)
         if pad_id is not None:
             labels[labels == pad_id] = -100
 
