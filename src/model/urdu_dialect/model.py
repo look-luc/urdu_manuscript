@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 import evaluate
+import numpy as np
 import torch
 from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
@@ -32,7 +33,6 @@ DEFAULT_RESULTS_DIR = SCRATCH_BASE / "results"
 
 
 class AutoregressiveTrainer(Trainer):
-    """Custom Trainer overriding prediction_step for Side 2 autoregressive generation."""
     def prediction_step(
             self,
             model: torch.nn.Module,
