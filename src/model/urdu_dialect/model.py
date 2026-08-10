@@ -29,54 +29,53 @@ wer_metric = evaluate.load("wer")
 
 SCRATCH_BASE = Path(f"/projects/{os.getenv('USER', 'lude4390')}")
 DEFAULT_OUTPUT_DIR = SCRATCH_BASE / "model" / "urdu_manuscript_model"
-DEFAULT_RESULTS_DIR = SCRATCH_BASE / "results"
 
 
 class AutoregressiveTrainer(Trainer):
     def prediction_step(
-            self,
-            model: torch.nn.Module,
-            inputs: dict,
-            prediction_loss_only: bool,
-            ignore_keys=None,
-        ):
-            if prediction_loss_only:
-                return super().prediction_step(
-                    model, inputs, prediction_loss_only, ignore_keys=ignore_keys
-                )
+        self,
+        model: torch.nn.Module,
+        inputs: dict,
+        prediction_loss_only: bool,
+        ignore_keys=None,
+    ):
+        if prediction_loss_only:
+            return super().prediction_step(
+                model, inputs, prediction_loss_only, ignore_keys=ignore_keys
+            )
 
-            inputs = self._prepare_inputs(inputs)
+        inputs = self._prepare_inputs(inputs)
 
-            unwrapped_model = self.accelerator.unwrap_model(model)
+        unwrapped_model = self.accelerator.unwrap_model(model)
 
-            with torch.no_grad():
-                outputs = model(
-                    input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"],
+        with torch.no_grad():
+            outputs = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                pixel_values=inputs.get("pixel_values"),
+                image_grid_thw=inputs.get("image_grid_thw"),
+                labels=inputs["labels"],
+            )
+            loss = outputs.loss.detach()
+
+            if "user_input_ids" in inputs:
+                prompt_len = inputs["user_input_ids"].shape[1]
+
+                generated_ids = unwrapped_model.generate(
+                    input_ids=inputs["user_input_ids"],
+                    attention_mask=inputs["user_attention_mask"],
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
-                    labels=inputs["labels"],
+                    max_new_tokens=512,
+                    use_cache=True,
                 )
-                loss = outputs.loss.detach()
 
-                if "user_input_ids" in inputs:
-                    prompt_len = inputs["user_input_ids"].shape[1]
+                generated_ids = generated_ids[:, prompt_len:]
+            else:
+                generated_ids = None
 
-                    generated_ids = unwrapped_model.generate(
-                        input_ids=inputs["user_input_ids"],
-                        attention_mask=inputs["user_attention_mask"],
-                        pixel_values=inputs.get("pixel_values"),
-                        image_grid_thw=inputs.get("image_grid_thw"),
-                        max_new_tokens=512,
-                        use_cache=True,
-                    )
-
-                    generated_ids = generated_ids[:, prompt_len:]
-                else:
-                    generated_ids = None
-
-            labels = inputs["labels"]
-            return (loss, generated_ids, labels)
+        labels = inputs["labels"]
+        return (loss, generated_ids, labels)
 
 
 class unification_urdu_lang_model:
@@ -110,16 +109,22 @@ class unification_urdu_lang_model:
 
         for pred_seq, label_seq in zip(predictions, labels):
             clean_pred = [
-                int(token) for token in pred_seq
+                int(token)
+                for token in pred_seq
                 if token != ignore_index and token != pad_id and token >= 0
             ]
             clean_label = [
-                int(token) for token in label_seq
+                int(token)
+                for token in label_seq
                 if token != ignore_index and token != pad_id and token >= 0
             ]
 
-            decoded_preds.append(tokenizer.decode(clean_pred, skip_special_tokens=True))
-            decoded_labels.append(tokenizer.decode(clean_label, skip_special_tokens=True))
+            decoded_preds.append(
+                tokenizer.decode(clean_pred, skip_special_tokens=True)
+            )
+            decoded_labels.append(
+                tokenizer.decode(clean_label, skip_special_tokens=True)
+            )
 
         cer_score = cer_metric.compute(
             predictions=decoded_preds, references=decoded_labels
@@ -180,10 +185,17 @@ class unification_urdu_lang_model:
             r=64,
             lora_alpha=64,
             target_modules=[
-                "q_proj", "v_proj", "k_proj", "o_proj",
-                "gate_proj", "up_proj", "down_proj",
-                "merger.mlp.0", "merger.mlp.2",
-                "qkv", "proj",
+                "q_proj",
+                "v_proj",
+                "k_proj",
+                "o_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+                "merger.mlp.0",
+                "merger.mlp.2",
+                "qkv",
+                "proj",
             ],
             lora_dropout=0.05,
             bias="none",
@@ -202,7 +214,7 @@ class unification_urdu_lang_model:
         eval_subset = test_dataset.select(range(min(50, len(test_dataset))))
 
         training_args = TrainingArguments(
-            output_dir=str(DEFAULT_RESULTS_DIR),
+            output_dir="./results",
             per_device_train_batch_size=4,
             per_device_eval_batch_size=4,
             gradient_accumulation_steps=4,
@@ -211,14 +223,17 @@ class unification_urdu_lang_model:
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=1000,
+            max_steps=500,
             logging_steps=10,
             eval_strategy="steps",
-            eval_steps=250,
+            eval_steps=100,
             save_strategy="steps",
-            save_steps=250,
-            save_total_limit=1,
-            learning_rate=1E-4,
+            save_steps=100,
+            save_total_limit=2,
+            load_best_model_at_end=True,
+            metric_for_best_model="eval_CER",
+            greater_is_better=False,
+            learning_rate=1e-4,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
@@ -242,13 +257,24 @@ class unification_urdu_lang_model:
         train_result = trainer.train()
 
         os.makedirs(output_dir, exist_ok=True)
+
         trainer.save_model(output_dir)
+        trainer.save_state()
+        trainer.save_metrics("train", train_result.metrics)
+
         self.processor.save_pretrained(output_dir)
 
-        if hasattr(self.processor, "tokenizer") and self.processor.tokenizer is not None:
+        if (
+            hasattr(self.processor, "tokenizer")
+            and self.processor.tokenizer is not None
+        ):
             self.processor.tokenizer.save_pretrained(output_dir)
 
-        base_model = self.model.get_base_model() if hasattr(self.model, "get_base_model") else self.model
+        base_model = (
+            self.model.get_base_model()
+            if hasattr(self.model, "get_base_model")
+            else self.model
+        )
         gen_config = getattr(base_model, "generation_config", None)
         if gen_config is not None and hasattr(gen_config, "save_pretrained"):
             gen_config.save_pretrained(output_dir)
