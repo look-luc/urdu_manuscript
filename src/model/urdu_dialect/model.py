@@ -27,7 +27,7 @@ from .data_collector import Data_Collector
 cer_metric = evaluate.load("cer")
 wer_metric = evaluate.load("wer")
 
-SCRATCH_BASE = Path(f"/projects/{os.getenv('USER', 'lude4390')}")
+SCRATCH_BASE = Path(f"/projects/{os.getenv('USER', 'lude4390')}/urdu_manuscript")
 DEFAULT_OUTPUT_DIR = SCRATCH_BASE / "model" / "urdu_manuscript_model"
 
 
@@ -223,7 +223,8 @@ class unification_urdu_lang_model:
             dataloader_num_workers=4,
             dataloader_pin_memory=True,
             dataloader_persistent_workers=True,
-            max_steps=500,
+            num_train_epochs=3,
+            # max_steps=500,
             logging_steps=10,
             eval_strategy="steps",
             eval_steps=100,
