@@ -14,8 +14,7 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-7B-Instruct",
-        prompt: str = """"You are an expert multilingual OCR system specializing in high-accuracy transcription of Arabic, Urdu (including Nastaliq and Naskh scripts), and Persian text.\nAnalyze the image carefully and transcribe the text line-by-line from right to left, maintaining the original paragraph breaks and line structure.\nOutput ONLY the raw extracted text. Do not fix spelling mistakes, do not normalize text structure, do not add translations, and do not include any conversational filler, notes, or markdown explanations before or after the transcription."
-            """,
+        prompt: str = """You are an expert OCR model for historical Urdu and Arabic-script manuscripts with expert knowledge of Farsi/Persian, Arabic and Urdu. Transcribe the text line-by-line. If there are marginal notes or footnotes, transcribe them separately at the end under 'Marginalia'. Do not translate.""",
             path_to_model:str=f"{script_path}/urdu_model"
     ) -> None:
         torch.backends.cudnn.enabled = False
@@ -40,8 +39,8 @@ class text_extraction:
 
         processor = AutoProcessor.from_pretrained(self.model_id)
 
-        processor.image_processor.min_pixels=128 * 128
-        processor.image_processor.max_pixels=200 * 200
+        processor.image_processor.min_pixels=256 * 28 * 28
+        processor.image_processor.max_pixels=1024 * 28 * 28
 
         return peft_model, processor
 
