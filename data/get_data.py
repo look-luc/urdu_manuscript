@@ -80,7 +80,7 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("MohamedRashad/arabic-img2md", split="train", cache_dir=CACHE_DIR),
     )
     arabic_train = (
-        arabic_raw_train.select(range(min(15000, len(arabic_raw_train))))
+        arabic_raw_train.select(range(min(2000, len(arabic_raw_train))))
         .rename_column("markdown", "text")
         .select_columns(["image", "text"])
         .map(**map_config)
@@ -98,10 +98,16 @@ def get_datasets(buffer_size: int = 1000):
     )
 
     print("Loading persian datasets...")
-    parsynth_train = cast(
+    parsynth_train_raw = cast(
         Dataset,
         load_dataset("hezarai/parsynth-ocr-200k", split="train", cache_dir=CACHE_DIR),
-    ).rename_column("image_path", "image").select_columns(["image", "text"]).map(**map_config)
+    )
+    parsynth_train = (
+        parsynth_train_raw.select(range(min(2000, len(parsynth_train_raw))))  # Fixed: Capped from 200k to 2,000
+        .rename_column("image_path", "image")
+        .select_columns(["image", "text"])
+        .map(**map_config)
+    )
 
     parsynth_test_raw = cast(
         Dataset,
@@ -120,13 +126,13 @@ def get_datasets(buffer_size: int = 1000):
     ).select_columns(["image", "text"])
 
     persian_pixel_test = persian_raw.select(range(250)).map(**map_config)
-    persian_pixel_train = persian_raw.select(range(10000, 35000)).map(**map_config)
+    persian_pixel_train = persian_raw.select(range(10000, 11000)).map(**map_config)  # Capped to 1,000
 
     print("Loading urdu datasets...")
     nastaliq_raw_train = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).select(range(150000)).map(**map_config)
+    ).select_columns(["image", "text"]).select(range(5000)).map(**map_config)  # Capped to 5,000
 
     nastaliq_raw_val = cast(
         Dataset,
@@ -152,7 +158,7 @@ def get_datasets(buffer_size: int = 1000):
         Dataset,
         interleave_datasets(
             datasets=train_sources,
-            probabilities=[0.15, 0.20, 0.15, 0.50],
+            probabilities=[0.20, 0.15, 0.15, 0.50],  # 50% focus on Urdu Nastaliq
             stopping_strategy="all_exhausted",
             seed=42,
         ).shuffle(

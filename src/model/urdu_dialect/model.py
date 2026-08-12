@@ -12,6 +12,7 @@ from transformers import (
     AutoModelForMultimodalLM,
     AutoProcessor,
     BitsAndBytesConfig,
+    EarlyStoppingCallback,
     Trainer,
     TrainingArguments,
 )
@@ -182,8 +183,8 @@ class unification_urdu_lang_model:
             processor.image_processor.min_pixels = 256 * 28 * 28
 
         peft_config = LoraConfig(
-            r=64,
-            lora_alpha=64,
+            r=32,
+            lora_alpha=32,
             target_modules=[
                 "q_proj",
                 "v_proj",
@@ -215,30 +216,28 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=4,
-            per_device_eval_batch_size=4,
-            gradient_accumulation_steps=4,
+            per_device_train_batch_size=1,
+            per_device_eval_batch_size=1,
+            gradient_accumulation_steps=16,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
-            dataloader_num_workers=4,
+            dataloader_num_workers=2,
             dataloader_pin_memory=True,
-            dataloader_persistent_workers=True,
-            num_train_epochs=3,
-            # max_steps=500,
+            num_train_epochs=1.3,
             logging_steps=10,
             eval_strategy="steps",
-            eval_steps=100,
+            eval_steps=50,
             save_strategy="steps",
-            save_steps=100,
+            save_steps=50,
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="eval_CER",
             greater_is_better=False,
-            learning_rate=1e-4,
+            learning_rate=2e-5,
             bf16=True,
             remove_unused_columns=False,
             max_grad_norm=1.0,
-            warmup_steps=100,
+            warmup_steps=50,
             lr_scheduler_type="cosine",
             optim="paged_adamw_8bit",
         )
@@ -253,6 +252,7 @@ class unification_urdu_lang_model:
                 prompt=self.prompt,
             ),
             compute_metrics=self._compute_metrics,
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
         )
 
         train_result = trainer.train()
