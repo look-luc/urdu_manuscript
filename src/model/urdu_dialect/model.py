@@ -95,6 +95,9 @@ class unification_urdu_lang_model:
     def _compute_metrics(self, eval_pred):
         predictions, labels = eval_pred
 
+        if predictions is None:
+            return {"CER": 0.0, "WER": 0.0, "BLEU": 0.0}
+
         if isinstance(predictions, tuple):
             predictions = predictions[0]
 
@@ -106,7 +109,7 @@ class unification_urdu_lang_model:
 
         ignore_index = -100
         tokenizer = self.processor.tokenizer
-        pad_id = tokenizer.pad_token_id
+        pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else -1
 
         for pred_seq, label_seq in zip(predictions, labels):
             clean_pred = [
@@ -126,6 +129,9 @@ class unification_urdu_lang_model:
             decoded_labels.append(
                 tokenizer.decode(clean_label, skip_special_tokens=True)
             )
+
+        if not decoded_preds or not any(decoded_preds):
+            return {"CER": 0.0, "WER": 0.0, "BLEU": 0.0}
 
         cer_score = cer_metric.compute(
             predictions=decoded_preds, references=decoded_labels
@@ -231,7 +237,7 @@ class unification_urdu_lang_model:
             save_steps=50,
             save_total_limit=2,
             load_best_model_at_end=True,
-            metric_for_best_model="eval_CER",
+            metric_for_best_model="eval_loss",
             greater_is_better=False,
             learning_rate=2e-5,
             bf16=True,
@@ -252,7 +258,7 @@ class unification_urdu_lang_model:
                 prompt=self.prompt,
             ),
             compute_metrics=self._compute_metrics,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=10)],
         )
 
         train_result = trainer.train()
