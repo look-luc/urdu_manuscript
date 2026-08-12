@@ -185,7 +185,7 @@ class unification_urdu_lang_model:
             processor.tokenizer.padding_side = "left"
 
         if hasattr(processor.image_processor, "max_pixels"):
-            processor.image_processor.max_pixels = 1024 * 28 * 28
+            processor.image_processor.max_pixels = 896 * 28 * 28
             processor.image_processor.min_pixels = 256 * 28 * 28
 
         peft_config = LoraConfig(
@@ -222,9 +222,9 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=1,
-            per_device_eval_batch_size=1,
-            gradient_accumulation_steps=16,
+            per_device_train_batch_size=2,
+            per_device_eval_batch_size=2,
+            gradient_accumulation_steps=8,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=2,
