@@ -185,7 +185,7 @@ class unification_urdu_lang_model:
             processor.tokenizer.padding_side = "left"
 
         if hasattr(processor.image_processor, "max_pixels"):
-            processor.image_processor.max_pixels = 896 * 28 * 28
+            processor.image_processor.max_pixels = (896-128) * 28 * 28
             processor.image_processor.min_pixels = 256 * 28 * 28
 
         peft_config = LoraConfig(
@@ -218,7 +218,7 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        eval_subset = test_dataset.select(range(min(50, len(test_dataset))))
+        eval_subset = test_dataset.select(range(min(100, len(test_dataset))))
 
         training_args = TrainingArguments(
             output_dir="./results",
@@ -229,7 +229,8 @@ class unification_urdu_lang_model:
             gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
-            num_train_epochs=1.3,
+            num_train_epochs=1,
+            max_steps=1000,
             logging_steps=10,
             eval_strategy="steps",
             eval_steps=50,
@@ -237,7 +238,7 @@ class unification_urdu_lang_model:
             save_steps=50,
             save_total_limit=2,
             load_best_model_at_end=True,
-            metric_for_best_model="eval_loss",
+            metric_for_best_model="CER",
             greater_is_better=False,
             learning_rate=2e-5,
             bf16=True,
