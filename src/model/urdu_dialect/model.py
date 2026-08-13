@@ -61,8 +61,24 @@ class AutoregressiveTrainer(Trainer):
             if "user_input_ids" in inputs:
                 prompt_len = inputs["user_input_ids"].shape[1]
 
-                tokenizer = getattr(unwrapped_model, "tokenizer", None) or getattr(self, "processing_class", None)
-                eos_id = getattr(tokenizer, "eos_token_id", None) if tokenizer else None
+                proc = getattr(self, "processing_class", None)
+                if proc is not None and hasattr(proc, "tokenizer") and proc.tokenizer is not None:
+                    tokenizer = proc.tokenizer
+                elif proc is not None:
+                    tokenizer = proc
+                else:
+                    tokenizer = getattr(unwrapped_model, "tokenizer", None)
+
+                if tokenizer is None:
+                    raise ValueError(
+                        "Tokenizer could not be resolved. Ensure `processing_class` is passed to AutoregressiveTrainer."
+                    )
+
+                pad_id = (
+                    tokenizer.pad_token_id
+                    if tokenizer.pad_token_id is not None
+                    else tokenizer.eos_token_id
+                )
 
                 generated_ids = unwrapped_model.generate(
                     input_ids=inputs["user_input_ids"],
@@ -70,13 +86,23 @@ class AutoregressiveTrainer(Trainer):
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
                     max_new_tokens=512,
-                    repetition_penalty=1.0,
+                    repetition_penalty=1.3,
                     no_repeat_ngram_size=0,
-                    eos_token_id=eos_id,
+                    eos_token_id=pad_id,
                     use_cache=True,
                 )
 
+                # Slice off prompt
                 generated_ids = generated_ids[:, prompt_len:]
+
+                # Pad to fixed 512 length across batches
+                pad_len = 512 - generated_ids.shape[1]
+                if pad_len > 0:
+                    generated_ids = torch.nn.functional.pad(
+                        generated_ids, (0, pad_len), value=pad_id
+                    )
+                elif pad_len < 0:
+                    generated_ids = generated_ids[:, :512]
             else:
                 generated_ids = None
 
@@ -241,7 +267,7 @@ class unification_urdu_lang_model:
             eval_steps=150,
             save_strategy="steps",
             save_steps=150,
-            save_total_limit=2,
+            save_total_limit=None,
             load_best_model_at_end=True,
             metric_for_best_model="CER",
             greater_is_better=False,
