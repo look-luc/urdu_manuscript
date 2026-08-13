@@ -46,7 +46,6 @@ class AutoregressiveTrainer(Trainer):
             )
 
         inputs = self._prepare_inputs(inputs)
-
         unwrapped_model = self.accelerator.unwrap_model(model)
 
         with torch.no_grad():
@@ -62,16 +61,18 @@ class AutoregressiveTrainer(Trainer):
             if "user_input_ids" in inputs:
                 prompt_len = inputs["user_input_ids"].shape[1]
 
-                eos_id = tokenizer.eos_token_id if tokenizer else None
+                tokenizer = getattr(unwrapped_model, "tokenizer", None) or getattr(self, "processing_class", None)
+                eos_id = getattr(tokenizer, "eos_token_id", None) if tokenizer else None
+
                 generated_ids = unwrapped_model.generate(
                     input_ids=inputs["user_input_ids"],
                     attention_mask=inputs["user_attention_mask"],
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
                     max_new_tokens=512,
-                    repetition_penalty=1.2,        # Prevents model from looping repetitive characters
-                    no_repeat_ngram_size=3,        # Stops recursive token loops in Urdu text
-                    eos_token_id=eos_id,           # Forces early termination on end-of-sequence
+                    repetition_penalty=1.2,
+                    no_repeat_ngram_size=3,
+                    eos_token_id=eos_id,
                     use_cache=True,
                 )
 
