@@ -69,7 +69,7 @@ def _make_graph(metric: dict[str, float], metric_name: str, color: str, output_d
 
     print(f"Made graph of {metric_name} as {file_name}.png at {output_dir}")
 
-def metrics_graph(path_to_results: str = str(BASE_DIR / "results" / "early_stop")):
+def metrics_graph(path_to_results: str = str(BASE_DIR / "results" / "log_550")):
     results_dir = Path(path_to_results)
 
     if results_dir.name == "graphs":

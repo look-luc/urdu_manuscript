@@ -62,12 +62,16 @@ class AutoregressiveTrainer(Trainer):
             if "user_input_ids" in inputs:
                 prompt_len = inputs["user_input_ids"].shape[1]
 
+                eos_id = tokenizer.eos_token_id if tokenizer else None
                 generated_ids = unwrapped_model.generate(
                     input_ids=inputs["user_input_ids"],
                     attention_mask=inputs["user_attention_mask"],
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
                     max_new_tokens=512,
+                    repetition_penalty=1.2,        # Prevents model from looping repetitive characters
+                    no_repeat_ngram_size=3,        # Stops recursive token loops in Urdu text
+                    eos_token_id=eos_id,           # Forces early termination on end-of-sequence
                     use_cache=True,
                 )
 
@@ -154,7 +158,7 @@ class unification_urdu_lang_model:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if torch.cuda.is_available():
-            torch.backends.cudnn.enabled = False
+            torch.backends.cudnn.enabled = True
             torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
@@ -222,28 +226,28 @@ class unification_urdu_lang_model:
 
         training_args = TrainingArguments(
             output_dir="./results",
-            per_device_train_batch_size=2,
-            per_device_eval_batch_size=2,
-            gradient_accumulation_steps=8,
+            per_device_train_batch_size=4,
+            per_device_eval_batch_size=4,
+            gradient_accumulation_steps=2,
             gradient_checkpointing=True,
             gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
             num_train_epochs=1,
-            max_steps=1000,
             logging_steps=10,
             eval_strategy="steps",
-            eval_steps=50,
+            eval_steps=150,
             save_strategy="steps",
-            save_steps=50,
+            save_steps=150,
             save_total_limit=2,
             load_best_model_at_end=True,
             metric_for_best_model="CER",
             greater_is_better=False,
             learning_rate=2e-5,
+            weight_decay=0.01,
             bf16=True,
             remove_unused_columns=False,
-            max_grad_norm=1.0,
+            max_grad_norm=0.5,
             warmup_steps=50,
             lr_scheduler_type="cosine",
             optim="paged_adamw_8bit",
