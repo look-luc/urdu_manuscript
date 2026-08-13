@@ -70,8 +70,8 @@ class AutoregressiveTrainer(Trainer):
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
                     max_new_tokens=512,
-                    repetition_penalty=1.2,
-                    no_repeat_ngram_size=3,
+                    repetition_penalty=1.0,
+                    no_repeat_ngram_size=0,
                     eos_token_id=eos_id,
                     use_cache=True,
                 )
@@ -88,7 +88,7 @@ class unification_urdu_lang_model:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
-        prompt: str = """You are an expert OCR model for historical Urdu and Arabic-script manuscripts with expert knowledge of Farsi/Persian, Arabic and Urdu. Transcribe the text line-by-line. If there are marginal notes or footnotes, transcribe them separately at the end under 'Marginalia'. Do not translate.""",
+        prompt: str = """Transcribe the text in this historical manuscript image. Output only the exact transcribed text.""",
         batch_size: int = 64,
     ) -> None:
         self.model_id = model_id
@@ -129,10 +129,10 @@ class unification_urdu_lang_model:
             ]
 
             decoded_preds.append(
-                tokenizer.decode(clean_pred, skip_special_tokens=True)
+                tokenizer.decode(clean_pred, skip_special_tokens=True).strip()
             )
             decoded_labels.append(
-                tokenizer.decode(clean_label, skip_special_tokens=True)
+                tokenizer.decode(clean_label, skip_special_tokens=True).strip()
             )
 
         if not decoded_preds or not any(decoded_preds):
@@ -235,7 +235,7 @@ class unification_urdu_lang_model:
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
             # num_train_epochs=1,
-            max_steps=1000,
+            max_steps=1500,
             logging_steps=10,
             eval_strategy="steps",
             eval_steps=150,
@@ -265,7 +265,7 @@ class unification_urdu_lang_model:
                 prompt=self.prompt,
             ),
             compute_metrics=self._compute_metrics,
-            callbacks=[EarlyStoppingCallback(early_stopping_patience=10)],
+            callbacks=[EarlyStoppingCallback(early_stopping_patience=4)],
         )
 
         train_result = trainer.train()
