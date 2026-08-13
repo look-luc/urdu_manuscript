@@ -158,7 +158,7 @@ class unification_urdu_lang_model:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if torch.cuda.is_available():
-            torch.backends.cudnn.enabled = True
+            torch.backends.cudnn.enabled = False
             torch.backends.cudnn.benchmark = False
 
         config = AutoConfig.from_pretrained(self.model_id)
@@ -233,7 +233,8 @@ class unification_urdu_lang_model:
             gradient_checkpointing_kwargs={"use_reentrant": False},
             dataloader_num_workers=2,
             dataloader_pin_memory=True,
-            num_train_epochs=1,
+            # num_train_epochs=1,
+            max_steps=1000,
             logging_steps=10,
             eval_strategy="steps",
             eval_steps=150,
