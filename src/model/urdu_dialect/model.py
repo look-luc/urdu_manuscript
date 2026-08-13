@@ -242,7 +242,7 @@ class unification_urdu_lang_model:
 
         model = get_peft_model(model, peft_config)
         model.enable_input_require_grads()
-
+        model.tokenizer = processor.tokenizer
         return model, processor, data
 
     def train(self, output_dir: str = str(DEFAULT_OUTPUT_DIR)):
