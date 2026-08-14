@@ -264,7 +264,7 @@ class unification_urdu_lang_model:
             max_steps=1500,
             logging_steps=10,
             eval_strategy="steps",
-            eval_steps=150,
+            eval_steps=250,
             save_strategy="steps",
             save_steps=250,
             save_total_limit=None,
