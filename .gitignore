@@ -4,3 +4,4 @@ test.csv
 train.csv
 img_*.jpg
 src/model/text_extraction/urdu_manuscript_model/
+src/model/text_extraction/checkpoint-1050/
