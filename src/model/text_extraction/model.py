@@ -15,7 +15,7 @@ class text_extraction:
         self,
         model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
         prompt: str = """You are an expert OCR model for historical Urdu and Arabic-script manuscripts with expert knowledge of Farsi/Persian, Arabic and Urdu. Transcribe the text line-by-line. If there are marginal notes or footnotes, transcribe them separately at the end under 'Marginalia'. Do not translate.""",
-        path_to_model:str=f"{script_path}/urdu_manuscript_model"
+        path_to_model:str=f"{script_path}/checkpoint-1050"
     ) -> None:
         torch.backends.cudnn.enabled = False
 
