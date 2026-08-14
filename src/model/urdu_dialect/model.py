@@ -266,7 +266,7 @@ class unification_urdu_lang_model:
             eval_strategy="steps",
             eval_steps=150,
             save_strategy="steps",
-            save_steps=150,
+            save_steps=250,
             save_total_limit=None,
             load_best_model_at_end=True,
             metric_for_best_model="CER",
