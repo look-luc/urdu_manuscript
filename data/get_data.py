@@ -1,11 +1,12 @@
+import glob
 import io
 import os
 import urllib.request
 from typing import cast
 
 import kagglehub
+import pandas as pd
 from datasets import Dataset, interleave_datasets, load_dataset, load_from_disk
-from kagglehub import KaggleDatasetAdapter
 
 SCRATCH_BASE = f"/scratch/alpine/{os.getenv('USER', '')}"
 CACHE_DIR = os.getenv("HF_HOME", f"{SCRATCH_BASE}/.cache/huggingface")
@@ -120,15 +121,45 @@ def get_datasets(buffer_size: int = 1000):
     persian_test = persian_split["test"].map(**map_config)
 
     print("Loading urdoocr dataset...")
-    path = kagglehub.dataset_download("i191796majid/urdoocr")
-    urdu_raw = cast(
-        Dataset,
-        kagglehub.load_dataset(
-            KaggleDatasetAdapter.HUGGING_FACE,
-            "i191796majid/urdoocr",
-            path,
-        ),
+    urdu_dir = kagglehub.dataset_download("i191796majid/urdoocr")
+
+    meta_files = (
+        glob.glob(os.path.join(urdu_dir, "**", "*.csv"), recursive=True)
+        + glob.glob(os.path.join(urdu_dir, "**", "*.json*"), recursive=True)
+        + glob.glob(os.path.join(urdu_dir, "**", "*.txt"), recursive=True)
     )
+
+    if meta_files:
+        meta_path = meta_files[0]
+        if meta_path.endswith(".csv"):
+            df = pd.read_csv(meta_path)
+        elif meta_path.endswith((".json", ".jsonl")):
+            df = pd.read_json(meta_path, lines=meta_path.endswith(".jsonl"))
+        else:
+            df = pd.read_csv(meta_path, sep=None, engine="python", header=None, names=["image", "text"])
+
+        text_candidates = ["text", "label", "caption", "transcription", "gt", "ground_truth", "urdu"]
+        img_candidates = ["image", "image_path", "filename", "file_name", "path", "img"]
+
+        text_col = next((c for c in df.columns if str(c).lower() in text_candidates), df.columns[-1])
+        img_col = next((c for c in df.columns if str(c).lower() in img_candidates), df.columns[0])
+
+        base_path = os.path.dirname(meta_path)
+        df["image"] = df[img_col].apply(lambda x: x if os.path.isabs(str(x)) else os.path.join(base_path, str(x)))
+        df["text"] = df[text_col].astype(str)
+
+        urdu_raw = Dataset.from_pandas(df[["image", "text"]])
+    else:
+        urdu_raw = cast(
+            Dataset,
+            load_dataset("imagefolder", data_dir=urdu_dir, split="train", cache_dir=CACHE_DIR),
+        )
+        non_img_cols = [c for c in urdu_raw.column_names if c != "image"]
+        if non_img_cols:
+            urdu_raw = urdu_raw.rename_column(non_img_cols[0], "text")
+        else:
+            raise ValueError(f"Could not locate text annotations in {urdu_dir}. Columns found: {urdu_raw.column_names}")
+
     urdu_split = urdu_raw.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
     urdu_train = urdu_split["train"].map(**map_config)
     urdu_test = urdu_split["test"].map(**map_config)
