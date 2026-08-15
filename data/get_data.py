@@ -1,4 +1,3 @@
-import glob
 import io
 import os
 import urllib.request
@@ -6,11 +5,14 @@ from typing import cast
 
 import kagglehub
 import pandas as pd
-from datasets import Dataset, interleave_datasets, load_dataset, load_from_disk
+from datasets import Dataset, Image, interleave_datasets, load_dataset, load_from_disk
 
 SCRATCH_BASE = f"/scratch/alpine/{os.getenv('USER', '')}"
 CACHE_DIR = os.getenv("HF_HOME", f"{SCRATCH_BASE}/.cache/huggingface")
 PROCESSED_DIR = os.getenv("PROCESSED_DATA_DIR", f"{SCRATCH_BASE}/processed_datasets")
+
+KAGGLE_CACHE_DIR = os.path.join(SCRATCH_BASE, "kaggle_cache")
+os.environ["KAGGLEHUB_CACHE"] = KAGGLE_CACHE_DIR
 
 SLURM_CPUS = os.getenv("SLURM_CPUS_PER_TASK")
 SYSTEM_CPUS = int(SLURM_CPUS) if SLURM_CPUS else (os.cpu_count() or 1)
@@ -87,6 +89,7 @@ def get_datasets(buffer_size: int = 1000):
         .rename_column("markdown", "text")
         .select_columns(["image", "text"])
         .map(**map_config)
+        .cast_column("image", Image())
     )
 
     arabic_raw_test = cast(
@@ -98,18 +101,31 @@ def get_datasets(buffer_size: int = 1000):
         .rename_column("markdown", "text")
         .select_columns(["image", "text"])
         .map(**map_config)
+        .cast_column("image", Image())
     )
 
     print("Loading urdu nastaliq datasets...")
-    nastaliq_raw_train = cast(
-        Dataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).select(range(5000)).map(**map_config)
+    nastaliq_raw_train = (
+        cast(
+            Dataset,
+            load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
+        )
+        .select_columns(["image", "text"])
+        .select(range(5000))
+        .map(**map_config)
+        .cast_column("image", Image())
+    )
 
-    nastaliq_raw_val = cast(
-        Dataset,
-        load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).select(range(1000)).map(**map_config)
+    nastaliq_raw_val = (
+        cast(
+            Dataset,
+            load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
+        )
+        .select_columns(["image", "text"])
+        .select(range(1000))
+        .map(**map_config)
+        .cast_column("image", Image())
+    )
 
     print("Loading Persian Pixel dataset...")
     full_persian = cast(
@@ -117,8 +133,8 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("Omarrran/Persian_Pixel", "full", split="train", cache_dir=CACHE_DIR),
     )
     persian_split = full_persian.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
-    persian_train = persian_split["train"].map(**map_config)
-    persian_test = persian_split["test"].map(**map_config)
+    persian_train = persian_split["train"].map(**map_config).cast_column("image", Image())
+    persian_test = persian_split["test"].map(**map_config).cast_column("image", Image())
 
     print("Loading urdoocr dataset...")
     urdu_dir = kagglehub.dataset_download("i191796majid/urdoocr")
@@ -128,42 +144,36 @@ def get_datasets(buffer_size: int = 1000):
         raise FileNotFoundError(f"Expected metadata file not found at: {file_path}")
 
     df = pd.read_csv(file_path)
+    img_col, text_col = "file_name", "text"
 
-    # Detect actual column names dynamically from CSV headers
-    img_col = "filename"
-    text_col = "text"
+    file_map = {}
+    for root, _, files in os.walk(urdu_dir):
+        for file in files:
+            full_p = os.path.join(root, file)
+            file_map[file] = full_p
+            rel_p = os.path.relpath(full_p, urdu_dir).lstrip("/\\")
+            file_map[rel_p] = full_p
 
     def resolve_path(p):
         clean_p = str(p).strip().lstrip("/\\")
-        full_p = os.path.join(urdu_dir, clean_p)
-        if os.path.exists(full_p):
-            return full_p
-
-        alt_p = os.path.join(urdu_dir, "images", clean_p)
-        return alt_p if os.path.exists(alt_p) else full_p
+        base_name = os.path.basename(clean_p)
+        return file_map.get(clean_p) or file_map.get(base_name)
 
     df["image"] = df[img_col].apply(resolve_path)
     df["text"] = df[text_col].astype(str)
 
+    missing_count = df["image"].isna().sum()
+    if missing_count > 0:
+        print(f"Warning: Dropping {missing_count} rows with missing image files.")
+        df = df.dropna(subset=["image"])
+
     urdu_raw = Dataset.from_pandas(df[["image", "text"]])
-
     urdu_split = urdu_raw.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
-    urdu_train = urdu_split["train"].map(**map_config)
-    urdu_test = urdu_split["test"].map(**map_config)
+    urdu_train = urdu_split["train"].map(**map_config).cast_column("image", Image())
+    urdu_test = urdu_split["test"].map(**map_config).cast_column("image", Image())
 
-    train_sources = [
-        arabic_train,
-        nastaliq_raw_train,
-        persian_train,
-        urdu_train,
-    ]
-
-    test_sources = [
-        arabic_test,
-        nastaliq_raw_val,
-        persian_test,
-        urdu_test,
-    ]
+    train_sources = [arabic_train, nastaliq_raw_train, persian_train, urdu_train]
+    test_sources = [arabic_test, nastaliq_raw_val, persian_test, urdu_test]
 
     print("Interleaving datasets...")
     test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
@@ -175,9 +185,7 @@ def get_datasets(buffer_size: int = 1000):
             probabilities=[0.3, 0.1, 0.3, 0.3],
             stopping_strategy="all_exhausted",
             seed=42,
-        ).shuffle(
-            seed=42,
-        ),
+        ).shuffle(seed=42),
     )
 
     print(f"Saving processed datasets to disk cache: {PROCESSED_DIR}")
