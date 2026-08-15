@@ -5,7 +5,7 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from peft import LoraConfig, get_peft_model
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoConfig,
@@ -86,7 +86,7 @@ class AutoregressiveTrainer(Trainer):
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
                     max_new_tokens=512,
-                    repetition_penalty=1.02,
+                    repetition_penalty=1.1,
                     no_repeat_ngram_size=0,
                     eos_token_id=pad_id,
                     use_cache=True,
@@ -227,21 +227,18 @@ class unification_urdu_lang_model:
                 "v_proj",
                 "k_proj",
                 "o_proj",
-                "lm_head",
-                "embed_tokens"
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+                "merger.mlp.0",
+                "merger.mlp.2",
+                "qkv",
+                "proj",
             ],
             lora_dropout=0.05,
             bias="none",
             task_type="CAUSAL_LM",
         )
-
-        model = prepare_model_for_kbit_training(
-            model, use_gradient_checkpointing=True
-        )
-
-        for name, module in model.named_modules():
-            if "lm_head" in name or "embed_tokens" in name:
-                module.to(torch.float32)
 
         model = get_peft_model(model, peft_config)
         model.enable_input_require_grads()
@@ -252,7 +249,7 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        eval_subset = test_dataset.select(range(min(500, len(test_dataset))))
+        eval_subset = test_dataset.select(range(min(100, len(test_dataset))))
 
         training_args = TrainingArguments(
             output_dir="./results",
@@ -267,14 +264,14 @@ class unification_urdu_lang_model:
             max_steps=1500,
             logging_steps=10,
             eval_strategy="steps",
-            eval_steps=250,
+            eval_steps=150,
             save_strategy="steps",
-            save_steps=250,
+            save_steps=150,
             save_total_limit=None,
             load_best_model_at_end=True,
             metric_for_best_model="CER",
             greater_is_better=False,
-            learning_rate=1e-4,
+            learning_rate=2e-5,
             weight_decay=0.01,
             bf16=True,
             remove_unused_columns=False,
