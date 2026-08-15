@@ -3,7 +3,9 @@ import os
 import urllib.request
 from typing import cast
 
+import kagglehub
 from datasets import Dataset, interleave_datasets, load_dataset, load_from_disk
+from kagglehub import KaggleDatasetAdapter
 
 SCRATCH_BASE = f"/scratch/alpine/{os.getenv('USER', '')}"
 CACHE_DIR = os.getenv("HF_HOME", f"{SCRATCH_BASE}/.cache/huggingface")
@@ -97,68 +99,62 @@ def get_datasets(buffer_size: int = 1000):
         .map(**map_config)
     )
 
-    print("Loading persian datasets...")
-    parsynth_train_raw = cast(
-        Dataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="train", cache_dir=CACHE_DIR),
-    )
-    parsynth_train = (
-        parsynth_train_raw.select(range(min(2000, len(parsynth_train_raw))))  # Fixed: Capped from 200k to 2,000
-        .rename_column("image_path", "image")
-        .select_columns(["image", "text"])
-        .map(**map_config)
-    )
-
-    parsynth_test_raw = cast(
-        Dataset,
-        load_dataset("hezarai/parsynth-ocr-200k", split="test", cache_dir=CACHE_DIR),
-    )
-    parsynth_test = (
-        parsynth_test_raw.select(range(min(250, len(parsynth_test_raw))))
-        .rename_column("image_path", "image")
-        .select_columns(["image", "text"])
-        .map(**map_config)
-    )
-
-    persian_raw = cast(
-        Dataset,
-        load_dataset("Omarrran/Persian_Pixel", name="full", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"])
-
-    persian_pixel_test = persian_raw.select(range(250)).map(**map_config)
-    persian_pixel_train = persian_raw.select(range(10000, 11000)).map(**map_config)  # Capped to 1,000
-
-    print("Loading urdu datasets...")
+    print("Loading urdu nastaliq datasets...")
     nastaliq_raw_train = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="train", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).select(range(5000)).map(**map_config)  # Capped to 5,000
+    ).select_columns(["image", "text"]).select(range(5000)).map(**map_config)
 
     nastaliq_raw_val = cast(
         Dataset,
         load_dataset("PuristanLabs1/urdu-ocr-1M", name="nastaliq", split="val", cache_dir=CACHE_DIR),
-    ).select_columns(["image", "text"]).select(range(250)).map(**map_config)
+    ).select_columns(["image", "text"]).select(range(1000)).map(**map_config)
 
-    test_sources = [
-        arabic_test,
-        parsynth_test,
-        persian_pixel_test,
-        nastaliq_raw_val,
-    ]
-    test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
+    print("Loading Persian Pixel dataset...")
+    full_persian = cast(
+        Dataset,
+        load_dataset("Omarrran/Persian_Pixel", "full", split="train", cache_dir=CACHE_DIR),
+    )
+    persian_split = full_persian.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
+    persian_train = persian_split["train"].map(**map_config)
+    persian_test = persian_split["test"].map(**map_config)
+
+    print("Loading urdoocr dataset...")
+    path = kagglehub.dataset_download("i191796majid/urdoocr")
+    urdu_raw = cast(
+        Dataset,
+        kagglehub.load_dataset(
+            KaggleDatasetAdapter.HUGGING_FACE,
+            "i191796majid/urdoocr",
+            path,
+        ),
+    )
+    urdu_split = urdu_raw.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
+    urdu_train = urdu_split["train"].map(**map_config)
+    urdu_test = urdu_split["test"].map(**map_config)
 
     train_sources = [
         arabic_train,
-        parsynth_train,
-        persian_pixel_train,
         nastaliq_raw_train,
+        persian_train,
+        urdu_train,
     ]
+
+    test_sources = [
+        arabic_test,
+        nastaliq_raw_val,
+        persian_test,
+        urdu_test,
+    ]
+
+    print("Interleaving datasets...")
+    test_dataset = cast(Dataset, interleave_datasets(test_sources, seed=42))
 
     train_dataset = cast(
         Dataset,
         interleave_datasets(
             datasets=train_sources,
-            probabilities=[0.20, 0.15, 0.15, 0.50],  # 50% focus on Urdu Nastaliq
+            probabilities=[0.3, 0.1, 0.3, 0.3],
             stopping_strategy="all_exhausted",
             seed=42,
         ).shuffle(
