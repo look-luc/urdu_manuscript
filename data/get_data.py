@@ -5,7 +5,14 @@ from typing import cast
 
 import kagglehub
 import pandas as pd
-from datasets import Dataset, Image, interleave_datasets, load_dataset, load_from_disk
+from datasets import (
+    Dataset,
+    Image,
+    Value,
+    interleave_datasets,
+    load_dataset,
+    load_from_disk,
+)
 
 SCRATCH_BASE = f"/scratch/alpine/{os.getenv('USER', '')}"
 CACHE_DIR = os.getenv("HF_HOME", f"{SCRATCH_BASE}/.cache/huggingface")
@@ -90,6 +97,7 @@ def get_datasets(buffer_size: int = 1000):
         .select_columns(["image", "text"])
         .map(**map_config)
         .cast_column("image", Image())
+        .cast_column("text", Value("string"))
     )
 
     arabic_raw_test = cast(
@@ -102,6 +110,7 @@ def get_datasets(buffer_size: int = 1000):
         .select_columns(["image", "text"])
         .map(**map_config)
         .cast_column("image", Image())
+        .cast_column("text", Value("string"))
     )
 
     print("Loading urdu nastaliq datasets...")
@@ -114,6 +123,7 @@ def get_datasets(buffer_size: int = 1000):
         .select(range(5000))
         .map(**map_config)
         .cast_column("image", Image())
+        .cast_column("text", Value("string"))
     )
 
     nastaliq_raw_val = (
@@ -125,6 +135,7 @@ def get_datasets(buffer_size: int = 1000):
         .select(range(1000))
         .map(**map_config)
         .cast_column("image", Image())
+        .cast_column("text", Value("string"))
     )
 
     print("Loading Persian Pixel dataset...")
@@ -133,8 +144,18 @@ def get_datasets(buffer_size: int = 1000):
         load_dataset("Omarrran/Persian_Pixel", "full", split="train", cache_dir=CACHE_DIR),
     )
     persian_split = full_persian.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
-    persian_train = persian_split["train"].map(**map_config).cast_column("image", Image())
-    persian_test = persian_split["test"].map(**map_config).cast_column("image", Image())
+    persian_train = (
+        persian_split["train"]
+        .map(**map_config)
+        .cast_column("image", Image())
+        .cast_column("text", Value("string"))
+    )
+    persian_test = (
+        persian_split["test"]
+        .map(**map_config)
+        .cast_column("image", Image())
+        .cast_column("text", Value("string"))
+    )
 
     print("Loading urdoocr dataset...")
     urdu_dir = kagglehub.dataset_download("i191796majid/urdoocr")
@@ -169,8 +190,18 @@ def get_datasets(buffer_size: int = 1000):
 
     urdu_raw = Dataset.from_pandas(df[["image", "text"]])
     urdu_split = urdu_raw.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
-    urdu_train = urdu_split["train"].map(**map_config).cast_column("image", Image())
-    urdu_test = urdu_split["test"].map(**map_config).cast_column("image", Image())
+    urdu_train = (
+        urdu_split["train"]
+        .map(**map_config)
+        .cast_column("image", Image())
+        .cast_column("text", Value("string"))
+    )
+    urdu_test = (
+        urdu_split["test"]
+        .map(**map_config)
+        .cast_column("image", Image())
+        .cast_column("text", Value("string"))
+    )
 
     train_sources = [arabic_train, nastaliq_raw_train, persian_train, urdu_train]
     test_sources = [arabic_test, nastaliq_raw_val, persian_test, urdu_test]
