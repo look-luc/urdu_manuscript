@@ -122,43 +122,30 @@ def get_datasets(buffer_size: int = 1000):
 
     print("Loading urdoocr dataset...")
     urdu_dir = kagglehub.dataset_download("i191796majid/urdoocr")
+    file_path = os.path.join(urdu_dir, "main.csv")
 
-    meta_files = (
-        glob.glob(os.path.join(urdu_dir, "**", "*.csv"), recursive=True)
-        + glob.glob(os.path.join(urdu_dir, "**", "*.json*"), recursive=True)
-        + glob.glob(os.path.join(urdu_dir, "**", "*.txt"), recursive=True)
-    )
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Expected metadata file not found at: {file_path}")
 
-    if meta_files:
-        meta_path = meta_files[0]
-        if meta_path.endswith(".csv"):
-            df = pd.read_csv(meta_path)
-        elif meta_path.endswith((".json", ".jsonl")):
-            df = pd.read_json(meta_path, lines=meta_path.endswith(".jsonl"))
-        else:
-            df = pd.read_csv(meta_path, sep=None, engine="python", header=None, names=["image", "text"])
+    df = pd.read_csv(file_path)
 
-        text_candidates = ["text", "label", "caption", "transcription", "gt", "ground_truth", "urdu"]
-        img_candidates = ["image", "image_path", "filename", "file_name", "path", "img"]
+    # Detect actual column names dynamically from CSV headers
+    img_col = "filename"
+    text_col = "text"
 
-        text_col = next((c for c in df.columns if str(c).lower() in text_candidates), df.columns[-1])
-        img_col = next((c for c in df.columns if str(c).lower() in img_candidates), df.columns[0])
+    def resolve_path(p):
+        clean_p = str(p).strip().lstrip("/\\")
+        full_p = os.path.join(urdu_dir, clean_p)
+        if os.path.exists(full_p):
+            return full_p
 
-        base_path = os.path.dirname(meta_path)
-        df["image"] = df[img_col].apply(lambda x: x if os.path.isabs(str(x)) else os.path.join(base_path, str(x)))
-        df["text"] = df[text_col].astype(str)
+        alt_p = os.path.join(urdu_dir, "images", clean_p)
+        return alt_p if os.path.exists(alt_p) else full_p
 
-        urdu_raw = Dataset.from_pandas(df[["image", "text"]])
-    else:
-        urdu_raw = cast(
-            Dataset,
-            load_dataset("imagefolder", data_dir=urdu_dir, split="train", cache_dir=CACHE_DIR),
-        )
-        non_img_cols = [c for c in urdu_raw.column_names if c != "image"]
-        if non_img_cols:
-            urdu_raw = urdu_raw.rename_column(non_img_cols[0], "text")
-        else:
-            raise ValueError(f"Could not locate text annotations in {urdu_dir}. Columns found: {urdu_raw.column_names}")
+    df["image"] = df[img_col].apply(resolve_path)
+    df["text"] = df[text_col].astype(str)
+
+    urdu_raw = Dataset.from_pandas(df[["image", "text"]])
 
     urdu_split = urdu_raw.select_columns(["image", "text"]).train_test_split(test_size=0.1, seed=42)
     urdu_train = urdu_split["train"].map(**map_config)
