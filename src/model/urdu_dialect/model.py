@@ -5,7 +5,7 @@ from pathlib import Path
 import evaluate
 import numpy as np
 import torch
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torchmetrics.functional.text import bleu_score
 from transformers import (
     AutoConfig,
@@ -86,7 +86,7 @@ class AutoregressiveTrainer(Trainer):
                     pixel_values=inputs.get("pixel_values"),
                     image_grid_thw=inputs.get("image_grid_thw"),
                     max_new_tokens=512,
-                    repetition_penalty=1.1,
+                    repetition_penalty=1.02,
                     no_repeat_ngram_size=0,
                     eos_token_id=pad_id,
                     use_cache=True,
@@ -235,6 +235,14 @@ class unification_urdu_lang_model:
             task_type="CAUSAL_LM",
         )
 
+        model = prepare_model_for_kbit_training(
+            model, use_gradient_checkpointing=True
+        )
+
+        for name, module in model.named_modules():
+            if "lm_head" in name or "embed_tokens" in name:
+                module.to(torch.float32)
+
         model = get_peft_model(model, peft_config)
         model.enable_input_require_grads()
         model.tokenizer = processor.tokenizer
@@ -244,7 +252,7 @@ class unification_urdu_lang_model:
         train_dataset = self.data["train"]
         test_dataset = self.data["test"]
 
-        eval_subset = test_dataset.select(range(min(100, len(test_dataset))))
+        eval_subset = test_dataset.select(range(min(500, len(test_dataset))))
 
         training_args = TrainingArguments(
             output_dir="./results",
@@ -266,7 +274,7 @@ class unification_urdu_lang_model:
             load_best_model_at_end=True,
             metric_for_best_model="CER",
             greater_is_better=False,
-            learning_rate=2e-5,
+            learning_rate=1e-4,
             weight_decay=0.01,
             bf16=True,
             remove_unused_columns=False,
