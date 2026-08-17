@@ -6,3 +6,4 @@ img_*.jpg
 src/model/text_extraction/urdu_manuscript_model/
 src/model/text_extraction/checkpoint-1050/
 src/model/text_extraction/best_human_in_loop_model/
+src/model/text_extraction/urdu_manusript_model/
