@@ -14,12 +14,14 @@ class text_extraction:
     def __init__(
         self,
         model_id: str = "Qwen/Qwen2.5-VL-3B-Instruct",
+        adapter_repo_id = "lookitsluc1/urdu-manuscript-text-extraction",
         prompt: str = """Transcribe the text in this historical manuscript image. Output only the exact transcribed text.""",
         path_to_model:str=f"{script_path}/urdu_manuscript_model"
     ) -> None:
         torch.backends.cudnn.enabled = False
 
         self.model_id = model_id
+        self.adapter_repo_id = adapter_repo_id
         self.prompt = prompt
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -34,7 +36,11 @@ class text_extraction:
             trust_remote_code=True,
         )
 
-        peft_model = PeftModel.from_pretrained(model, self.path_to_model)
+        try:
+            peft_model = PeftModel.from_pretrained(model, self.self.path_to_model)
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            peft_model = PeftModel.from_pretrained(model, self.adapter_repo_id)
         peft_model = peft_model.merge_and_unload()
 
         processor = AutoProcessor.from_pretrained(self.model_id)
