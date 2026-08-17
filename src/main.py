@@ -8,6 +8,7 @@ from src.model.text_extraction.model import text_extraction
 from src.model.urdu_dialect.graphs import metrics_graph
 from src.model.urdu_dialect.model import unification_urdu_lang_model
 from src.test import run_diagnostics
+from src.uploading_model import upload_model
 
 load_dotenv()
 hf_token = os.getenv("HF_TOKEN")
@@ -47,5 +48,7 @@ def run_model(what_model: str):
         metrics_graph()
     elif what_model == "diagnostic":
         run_diagnostics()
+    elif what_model == "huggingface":
+        upload_model()
     else:
         raise ValueError(f"{what_model} is not a valid model run type.")
